@@ -277,3 +277,40 @@ jobs:
         with:
           name: slog-logs-${{ matrix.mode }}
           path: work/out
+
+  pacemaker2:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 50
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install qemu
+        run: |
+          sudo apt-get update -q
+          sudo apt-get install -yq --no-install-recommends \
+              qemu-system-x86 qemu-utils cloud-image-utils
+          sudo chmod 666 /dev/kvm
+
+      - name: Cache the cloud image
+        uses: actions/cache@v4
+        with:
+          path: work/base.img
+          key: noble-cloudimg-${{ github.run_id }}
+          restore-keys: noble-cloudimg-
+
+      - name: Boot VMs
+        run: sh lab/vms.sh up
+
+      - name: Two pools, power loss on ctl-a
+        timeout-minutes: 30
+        run: sh lab/pacemaker2.sh
+
+      - name: Summary
+        if: always()
+        run: cat work/out/summary.md >> "$GITHUB_STEP_SUMMARY" 2>/dev/null || true
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: pacemaker2-logs
+          path: work/out
