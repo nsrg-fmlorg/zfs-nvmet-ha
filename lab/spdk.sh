@@ -18,7 +18,8 @@ set -eu
 LAB=${LAB:-$(pwd)/work}
 OUT=${OUT:-$LAB/out}
 mkdir -p "$OUT"
-echo "spdk-vs-kernel tcp" > "$OUT/config.txt"
+ZVOL_SYNC=${ZVOL_SYNC:-standard}
+echo "spdk-vs-kernel tcp sync=$ZVOL_SYNC" > "$OUT/config.txt"
 
 port() { case $1 in ctl-a) echo 2221;; ctl-b) echo 2222;; host) echo 2223;; esac; }
 on() {
@@ -115,6 +116,7 @@ udevadm settle
 sleep 2
 for d in /sys/class/nvme/nvme*; do echo "${d##*/} $(cat $d/subsysnqn)"; done
 EOF
+on ctl-a sudo zfs set sync="$ZVOL_SYNC" perf/vol
 grep -v '^+' "$OUT/spdk-setup.txt" | tail -n 12
 
 dev_of() {

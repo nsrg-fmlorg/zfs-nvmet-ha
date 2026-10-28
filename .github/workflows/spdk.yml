@@ -59,6 +59,9 @@ jobs:
       matrix:
         # Repeated: single runs on shared runners varied by up to seven times.
         rep: [1, 2, 3]
+        # sync=always is what lab/spdk-failover.sh needs to keep acknowledged
+        # writes; measure what it costs on both targets.
+        sync: [standard, always]
     steps:
       - uses: actions/checkout@v4
 
@@ -88,7 +91,7 @@ jobs:
 
       - name: SPDK vs kernel nvmet
         timeout-minutes: 30
-        run: sh lab/spdk.sh
+        run: ZVOL_SYNC=${{ matrix.sync }} sh lab/spdk.sh
 
       - name: Summary
         if: always()
@@ -97,7 +100,7 @@ jobs:
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: spdk-logs-${{ matrix.rep }}
+          name: spdk-logs-${{ matrix.sync }}-${{ matrix.rep }}
           path: work/out
 
   summary:
@@ -111,4 +114,8 @@ jobs:
           pattern: spdk-logs-*
           path: runs
       - name: Median over runs
-        run: python3 lab/spdk-agg.py runs/* | tee -a "$GITHUB_STEP_SUMMARY"
+        run: |
+          for s in standard always; do
+            echo "zvol sync=$s"
+            python3 lab/spdk-agg.py runs/spdk-logs-$s-*
+          done | tee -a "$GITHUB_STEP_SUMMARY"
