@@ -1,0 +1,62 @@
+name: lab
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - 'lab/**'
+      - '.github/workflows/lab.yml'
+
+concurrency:
+  group: lab-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  failover:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install qemu
+        run: |
+          sudo apt-get update -q
+          sudo apt-get install -yq --no-install-recommends \
+              qemu-system-x86 qemu-utils cloud-image-utils
+          sudo chmod 666 /dev/kvm
+
+      - name: Cache the cloud image
+        uses: actions/cache@v4
+        with:
+          path: work/base.img
+          key: noble-cloudimg-${{ github.run_id }}
+          restore-keys: noble-cloudimg-
+
+      - name: Boot VMs
+        run: sh lab/vms.sh up
+
+      - name: Failover
+        timeout-minutes: 25
+        run: sh lab/failover.sh
+
+      - name: Summary
+        if: always()
+        run: cat work/out/summary.md >> "$GITHUB_STEP_SUMMARY" 2>/dev/null || true
+
+      - name: Collect logs
+        if: always()
+        run: |
+          mkdir -p logs
+          cp -r work/out logs/ 2>/dev/null || true
+          for v in ctl-a ctl-b host; do
+            cp work/$v/console.log logs/$v-console.log 2>/dev/null || true
+            cp work/$v/qemu.log logs/$v-qemu.log 2>/dev/null || true
+          done
+          ps -eo pid,etime,args | grep '[q]emu-system' > logs/qemu-ps.txt || true
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: lab-logs
+          path: logs
