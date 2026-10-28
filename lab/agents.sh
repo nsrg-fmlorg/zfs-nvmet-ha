@@ -33,14 +33,14 @@ for v in ctl-a host; do
 		sleep 10
 	done
 done
-put ctl-a "$HERE/patches/resource-agents-nvmet-ana-cntlid.diff" /tmp/ra.diff
+put ctl-a "$HERE/patches/resource-agents-nvmet-ana-cntlid.diff" /home/ubuntu/ra.diff
 
 on ctl-a sudo sh -eu > "$OUT/agents.txt" 2>&1 <<EOF || { cat "$OUT/agents.txt"; exit 1; }
 apt-get install -yq resource-agents-base libxml2-utils git > /dev/null
-git clone -q --filter=blob:none https://github.com/ClusterLabs/resource-agents.git /tmp/ra
-cd /tmp/ra
+git clone -q --filter=blob:none https://github.com/ClusterLabs/resource-agents.git /home/ubuntu/ra
+cd /home/ubuntu/ra
 git checkout -q $RA_COMMIT
-git apply /tmp/ra.diff
+git apply /home/ubuntu/ra.diff
 
 export OCF_ROOT=/usr/lib/ocf
 export OCF_FUNCTIONS_DIR=/usr/lib/ocf/lib/heartbeat
@@ -62,8 +62,8 @@ equal() {
 }
 
 for a in nvmet-subsystem nvmet-namespace nvmet-port; do
-	sh heartbeat/\$a meta-data > /tmp/\$a.xml
-	xmllint --noout --dtdvalid heartbeat/ra-api-1.dtd /tmp/\$a.xml && ok "\$a meta-data valid" || bad "\$a meta-data"
+	sh heartbeat/\$a meta-data > /home/ubuntu/\$a.xml
+	xmllint --noout --dtdvalid heartbeat/ra-api-1.dtd /home/ubuntu/\$a.xml && ok "\$a meta-data valid" || bad "\$a meta-data"
 done
 
 modprobe nvmet; modprobe nvmet-tcp; modprobe null_blk nr_devices=1
@@ -134,7 +134,7 @@ EOF
 echo "host before reload: $(ana_log 2>>"$OUT/ana-raw.txt" | tr '\n' ' ')" | tee -a "$OUT/agents.txt"
 
 on ctl-a sudo sh -eu >> "$OUT/agents.txt" 2>&1 <<EOF || { cat "$OUT/agents.txt"; exit 1; }
-cd /tmp/ra
+cd /home/ubuntu/ra
 export OCF_ROOT=/usr/lib/ocf OCF_FUNCTIONS_DIR=/usr/lib/ocf/lib/heartbeat
 C=/sys/kernel/config/nvmet
 NQN=nqn.2026-10.org.fml.nsrg:ra-test
@@ -148,7 +148,7 @@ echo "host after reload: $(ana_log 2>>"$OUT/ana-raw.txt" | tr '\n' ' ')" | tee -
 
 on host sudo nvme disconnect -n nqn.2026-10.org.fml.nsrg:ra-test > /dev/null 2>&1 || :
 on ctl-a sudo sh -eu >> "$OUT/agents.txt" 2>&1 <<EOF || :
-cd /tmp/ra
+cd /home/ubuntu/ra
 export OCF_ROOT=/usr/lib/ocf OCF_FUNCTIONS_DIR=/usr/lib/ocf/lib/heartbeat
 C=/sys/kernel/config/nvmet
 NQN=nqn.2026-10.org.fml.nsrg:ra-test
@@ -156,7 +156,28 @@ env OCF_RESKEY_port_id=5 OCF_RESKEY_addr=10.10.0.11 OCF_RESKEY_svcid=4421 OCF_RE
     sh heartbeat/nvmet-port stop && echo "ok   port stop rc 0" || echo "FAIL port stop"
 [ -d \$C/ports/5 ] && echo "FAIL port 5 still there" || echo "ok   port 5 removed with its ANA group"
 EOF
-tail -n 3 "$OUT/agents.txt"
+
+# Started again with another state: what a cluster does when ana_state
+# changes, since the agent does not advertise reload to Pacemaker.
+on ctl-a sudo sh -eu >> "$OUT/agents.txt" 2>&1 <<EOF || :
+cd /home/ubuntu/ra
+export OCF_ROOT=/usr/lib/ocf OCF_FUNCTIONS_DIR=/usr/lib/ocf/lib/heartbeat
+C=/sys/kernel/config/nvmet
+NQN=nqn.2026-10.org.fml.nsrg:ra-test
+env OCF_RESKEY_port_id=5 OCF_RESKEY_addr=10.10.0.11 OCF_RESKEY_svcid=4421 OCF_RESKEY_nqns=\$NQN OCF_RESKEY_ana_grpid=2 \
+    OCF_RESKEY_ana_state=non-optimized sh heartbeat/nvmet-port start && echo "ok   port start again rc 0" || echo "FAIL port start again"
+s=\$(cat \$C/ports/5/ana_groups/2/ana_state)
+[ "\$s" = non-optimized ] && echo "ok   started again as non-optimized" || echo "FAIL started again as \$s"
+EOF
+echo "host after restart: $(ana_log 2>>"$OUT/ana-raw.txt" | tr '\n' ' ')" | tee -a "$OUT/agents.txt"
+on host sudo nvme disconnect -n nqn.2026-10.org.fml.nsrg:ra-test > /dev/null 2>&1 || :
+on ctl-a sudo sh -eu >> "$OUT/agents.txt" 2>&1 <<EOF || :
+cd /home/ubuntu/ra
+export OCF_ROOT=/usr/lib/ocf OCF_FUNCTIONS_DIR=/usr/lib/ocf/lib/heartbeat
+env OCF_RESKEY_port_id=5 OCF_RESKEY_addr=10.10.0.11 OCF_RESKEY_svcid=4421 OCF_RESKEY_nqns=nqn.2026-10.org.fml.nsrg:ra-test OCF_RESKEY_ana_grpid=2 \
+    sh heartbeat/nvmet-port stop && echo "ok   final port stop rc 0" || echo "FAIL final port stop"
+EOF
+tail -n 6 "$OUT/agents.txt"
 echo "--- raw ANA log as the host read it"; cat "$OUT/ana-raw.txt" 2>/dev/null || :
 
 {
@@ -168,3 +189,4 @@ echo "--- raw ANA log as the host read it"; cat "$OUT/ana-raw.txt" 2>/dev/null |
 ! grep -q '^FAIL' "$OUT/agents.txt"
 grep -q 'host before reload:.*grpid 2 state inaccessible' "$OUT/agents.txt"
 grep -q 'host after reload:.*grpid 2 state optimized' "$OUT/agents.txt"
+grep -q 'host after restart:.*grpid 2 state non-optimized' "$OUT/agents.txt"

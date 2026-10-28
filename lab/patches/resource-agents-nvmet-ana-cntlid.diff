@@ -55,7 +55,7 @@ index 4c5c452e..67e8c01d 100755
  	    ocf_log info "nvmet kernel module not loaded, attempting to load it..."
  	    modprobe nvmet 2>/dev/null
 diff --git a/heartbeat/nvmet-port b/heartbeat/nvmet-port
-index c23b9e3c..21675872 100755
+index c23b9e3c..d5e527be 100755
 --- a/heartbeat/nvmet-port
 +++ b/heartbeat/nvmet-port
 @@ -41,6 +41,12 @@ OCF_RESKEY_addr_fam_default="ipv4"
@@ -71,7 +71,7 @@ index c23b9e3c..21675872 100755
  #######################################################################
  meta_data() {
  	cat <<END
-@@ -109,6 +115,29 @@ this NVMe-oF-Target port. This list needs to have at least one entry.
+@@ -109,6 +115,28 @@ this NVMe-oF-Target port. This list needs to have at least one entry.
  <content type="string"/>
  </parameter>
  
@@ -90,9 +90,8 @@ index c23b9e3c..21675872 100755
 +'optimized', 'non-optimized', 'inaccessible', 'persistent-loss' or
 +'change'. Hosts using NVMe multipath send I/O to the optimized paths
 +first. When the same subsystem is exported from several nodes, this is
-+how one of them is marked as the path to use. It is applied on start and
-+on reload, so a reload with a new value changes the state in place.
-+Unset leaves the kernel default, optimized.
++how one of them is marked as the path to use. It is applied when the
++port starts. Unset leaves the kernel default, optimized.
 +</longdesc>
 +<shortdesc lang="en">ANA state</shortdesc>
 +<content type="string" default="${OCF_RESKEY_ana_state_default}"/>
@@ -101,7 +100,7 @@ index c23b9e3c..21675872 100755
  </parameters>
  
  <actions>
-@@ -133,10 +162,20 @@ Expects to have a fully populated OCF RA-compliant environment set.
+@@ -133,10 +161,20 @@ Expects to have a fully populated OCF RA-compliant environment set.
  END
  }
  
@@ -123,7 +122,7 @@ index c23b9e3c..21675872 100755
  	fi
  
  	mkdir ${portdir}
-@@ -145,6 +184,10 @@ nvmet_port_start() {
+@@ -145,6 +183,10 @@ nvmet_port_start() {
  	echo ${OCF_RESKEY_svcid} > ${portdir}/addr_trsvcid
  	echo ${OCF_RESKEY_addr_fam} > ${portdir}/addr_adrfam
  
@@ -134,7 +133,7 @@ index c23b9e3c..21675872 100755
  	for subsystem in ${OCF_RESKEY_nqns}; do
  		ln -s /sys/kernel/config/nvmet/subsystems/${subsystem} \
  		   ${portdir}/subsystems/${subsystem}
-@@ -163,6 +206,13 @@ nvmet_port_stop() {
+@@ -163,6 +205,13 @@ nvmet_port_stop() {
  		rm ${portdir}/subsystems/${subsystem}
  	done
  
@@ -148,7 +147,7 @@ index c23b9e3c..21675872 100755
  	rmdir ${portdir}
  
  	return $OCF_SUCCESS
-@@ -192,6 +242,22 @@ nvmet_port_validate() {
+@@ -192,6 +241,22 @@ nvmet_port_validate() {
  			;;
  	esac
  
