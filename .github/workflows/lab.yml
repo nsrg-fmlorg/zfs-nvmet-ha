@@ -178,3 +178,61 @@ jobs:
         with:
           name: pacemaker-logs-${{ matrix.rep }}
           path: work/out
+
+  perf:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
+    strategy:
+      fail-fast: false
+      matrix:
+        # Three runs of each: single runs varied by up to seven times.
+        config: ['mirror on', 'single on', 'mirror off']
+        rep: [1, 2, 3]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install qemu
+        run: |
+          sudo apt-get update -q
+          sudo apt-get install -yq --no-install-recommends \
+              qemu-system-x86 qemu-utils cloud-image-utils
+          sudo chmod 666 /dev/kvm
+
+      - name: Cache the cloud image
+        uses: actions/cache@v4
+        with:
+          path: work/base.img
+          key: noble-cloudimg-${{ github.run_id }}
+          restore-keys: noble-cloudimg-
+
+      - name: Boot VMs
+        run: CTL_MEM=6G sh lab/vms.sh up
+
+      - name: I/O path comparison
+        timeout-minutes: 25
+        run: |
+          set -- ${{ matrix.config }}
+          PERF_LAYOUT=$1 PERF_CKSUM=$2 PERF_NULLB_MB=2048 sh lab/perf.sh
+
+      - name: Summary
+        if: always()
+        run: cat work/out/summary.md >> "$GITHUB_STEP_SUMMARY" 2>/dev/null || true
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: perf-logs-${{ strategy.job-index }}
+          path: work/out
+
+  perf-summary:
+    needs: perf
+    if: always()
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: perf-logs-*
+          path: perf
+      - name: Median over runs
+        run: python3 lab/perf-agg.py perf/* | tee -a "$GITHUB_STEP_SUMMARY"

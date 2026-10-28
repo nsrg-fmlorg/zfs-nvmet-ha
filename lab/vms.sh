@@ -96,7 +96,8 @@ up)
 	# (ocf-shellfuncs, ZFS, Delay); the host needs neither.
 	ha=', pacemaker, corosync, resource-agents-base, resource-agents-extra, libxml2-utils, git'
 	vm_seed ctl-a 1 "$ha"; vm_seed ctl-b 2 "$ha"; vm_seed host 3
-	vm_start ctl-a 1 2 3G yes
+	# CTL_MEM: SPDK's hugepages need more than the default 3G on ctl-a.
+	vm_start ctl-a 1 2 "${CTL_MEM:-3G}" yes
 	vm_start ctl-b 2 2 3G yes
 	vm_start host 3 1 1536M no
 	vm_alive ctl-a ctl-b host
