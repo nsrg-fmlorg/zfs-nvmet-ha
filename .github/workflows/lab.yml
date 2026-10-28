@@ -67,3 +67,71 @@ jobs:
         with:
           name: lab-logs-${{ strategy.job-index }}
           path: logs
+
+  agents:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install qemu
+        run: |
+          sudo apt-get update -q
+          sudo apt-get install -yq --no-install-recommends \
+              qemu-system-x86 qemu-utils cloud-image-utils
+          sudo chmod 666 /dev/kvm
+
+      - name: Cache the cloud image
+        uses: actions/cache@v4
+        with:
+          path: work/base.img
+          key: noble-cloudimg-${{ github.run_id }}
+          restore-keys: noble-cloudimg-
+
+      - name: Boot VMs
+        run: sh lab/vms.sh up
+
+      - name: Resource agents
+        timeout-minutes: 25
+        run: sh lab/agents.sh
+
+      - name: Summary
+        if: always()
+        run: cat work/out/summary.md >> "$GITHUB_STEP_SUMMARY" 2>/dev/null || true
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: agents-logs
+          path: work/out
+
+  shellcheck:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: No new shellcheck findings from the agent patch
+        run: |
+          set -eu
+          base=81e937fdb694d39aafbb9ac8ca415b188bb0751b
+          git clone -q --filter=blob:none https://github.com/ClusterLabs/resource-agents.git ra
+          cd ra && git checkout -q "$base"
+          # The flags of upstream's ci/build.sh, plus SC2223: every agent
+          # declares its parameters as : ${OCF_RESKEY_x=default}, so each
+          # new parameter adds one by the tree's own idiom.
+          sc() { shellcheck -s sh -f gcc -x -e SC1090,SC2039,SC2154,SC1087,SC2223 \
+                     heartbeat/nvmet-port heartbeat/nvmet-subsystem heartbeat/nvmet-namespace \
+                   | sed -E 's/:[0-9]+:[0-9]+:/:/' | sort | uniq -c || true; }
+          shellcheck --version | sed -n 2p
+          sc > ../before.txt
+          git apply ../lab/patches/resource-agents-nvmet-ana-cntlid.diff
+          sc > ../after.txt
+          cd ..
+          # Lines carry a count per (file, code, message): a finding the
+          # patch adds shows up as a higher count even where upstream
+          # already had the same kind.
+          awk 'NR == FNR { n = $1; $1 = ""; b[$0] = n; next }
+               { n = $1; $1 = ""; if (n > b[$0] + 0) print n - b[$0] " more:" $0 }' \
+              before.txt after.txt > new.txt
+          echo "before: $(awk '{ s += $1 } END { print s + 0 }' before.txt) findings, after: $(awk '{ s += $1 } END { print s + 0 }' after.txt)"
+          if [ -s new.txt ]; then echo "new findings:"; cat new.txt; exit 1; fi
+          echo "no new findings"

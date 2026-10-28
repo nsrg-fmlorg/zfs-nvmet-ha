@@ -1,0 +1,251 @@
+diff --git a/heartbeat/nvmet-namespace b/heartbeat/nvmet-namespace
+index 4c5c452e..67e8c01d 100755
+--- a/heartbeat/nvmet-namespace
++++ b/heartbeat/nvmet-namespace
+@@ -35,6 +35,9 @@ OCF_RESKEY_namespace_id_default="1"
+ 
+ OCF_RESKEY_nguid_default=""
+ : ${OCF_RESKEY_nguid=${OCF_RESKEY_nguid_default}}
++
++OCF_RESKEY_ana_grpid_default=""
++: ${OCF_RESKEY_ana_grpid=${OCF_RESKEY_ana_grpid_default}}
+ #######################################################################
+ 
+ meta_data() {
+@@ -102,6 +105,17 @@ Use 'uuidgen' to create it.
+ <content type="string" default="${OCF_RESKEY_nguid_default}"/>
+ </parameter>
+ 
++<parameter name="ana_grpid" required="0" unique="0">
++<longdesc lang="en">
++ANA group the namespace belongs to, 1 to 128. The access state the host
++sees for the namespace is the state of this group on the port it comes in
++through; see the ana_state parameter of nvmet-port.
++Unset leaves the kernel default, group 1.
++</longdesc>
++<shortdesc lang="en">ANA group ID</shortdesc>
++<content type="integer" default="${OCF_RESKEY_ana_grpid_default}"/>
++</parameter>
++
+ </parameters>
+ 
+ <actions>
+@@ -141,6 +155,7 @@ nvmet_namespace_start() {
+ 	echo "${OCF_RESKEY_backing_path}" > ${namespace}/device_path
+ 	echo "${OCF_RESKEY_uuid}" > ${namespace}/device_uuid
+ 	[ "${OCF_RESKEY_nguid}" ] && echo "${OCF_RESKEY_nguid}" > ${namespace}/device_nguid
++	[ "${OCF_RESKEY_ana_grpid}" ] && echo "${OCF_RESKEY_ana_grpid}" > "${namespace}/ana_grpid"
+ 	echo 1 > ${namespace}/enable
+ 
+ 	nvmet_namespace_monitor
+@@ -163,6 +178,15 @@ nvmet_namespace_monitor() {
+ }
+ 
+ nvmet_namespace_validate() {
++	# 128 is NVMET_MAX_ANAGRPS in the kernel's nvmet.h.
++	if [ "${OCF_RESKEY_ana_grpid}" ]; then
++		if ! ocf_is_decimal "${OCF_RESKEY_ana_grpid}" ||
++		   [ "${OCF_RESKEY_ana_grpid}" -lt 1 ] || [ "${OCF_RESKEY_ana_grpid}" -gt 128 ]; then
++			ocf_log err "ana_grpid must be between 1 and 128, got ${OCF_RESKEY_ana_grpid}"
++			exit "$OCF_ERR_CONFIGURED"
++		fi
++	fi
++
+ 	if [ ! -d /sys/kernel/config/nvmet ]; then
+ 	    ocf_log info "nvmet kernel module not loaded, attempting to load it..."
+ 	    modprobe nvmet 2>/dev/null
+diff --git a/heartbeat/nvmet-port b/heartbeat/nvmet-port
+index c23b9e3c..21675872 100755
+--- a/heartbeat/nvmet-port
++++ b/heartbeat/nvmet-port
+@@ -41,6 +41,12 @@ OCF_RESKEY_addr_fam_default="ipv4"
+ 
+ OCF_RESKEY_svcid_default="4420"
+ : ${OCF_RESKEY_svcid=${OCF_RESKEY_svcid_default}}
++
++OCF_RESKEY_ana_grpid_default="1"
++: ${OCF_RESKEY_ana_grpid=${OCF_RESKEY_ana_grpid_default}}
++
++OCF_RESKEY_ana_state_default=""
++: ${OCF_RESKEY_ana_state=${OCF_RESKEY_ana_state_default}}
+ #######################################################################
+ meta_data() {
+ 	cat <<END
+@@ -109,6 +115,29 @@ this NVMe-oF-Target port. This list needs to have at least one entry.
+ <content type="string"/>
+ </parameter>
+ 
++<parameter name="ana_grpid" required="0" unique="0">
++<longdesc lang="en">
++ANA group, 1 to 128, whose state ana_state sets on this port. Group 1
++always exists; any other group is created on start and removed on stop.
++</longdesc>
++<shortdesc lang="en">ANA group ID</shortdesc>
++<content type="integer" default="${OCF_RESKEY_ana_grpid_default}"/>
++</parameter>
++
++<parameter name="ana_state" required="0" unique="0">
++<longdesc lang="en">
++Asymmetric Namespace Access state of ana_grpid on this port: one of
++'optimized', 'non-optimized', 'inaccessible', 'persistent-loss' or
++'change'. Hosts using NVMe multipath send I/O to the optimized paths
++first. When the same subsystem is exported from several nodes, this is
++how one of them is marked as the path to use. It is applied on start and
++on reload, so a reload with a new value changes the state in place.
++Unset leaves the kernel default, optimized.
++</longdesc>
++<shortdesc lang="en">ANA state</shortdesc>
++<content type="string" default="${OCF_RESKEY_ana_state_default}"/>
++</parameter>
++
+ </parameters>
+ 
+ <actions>
+@@ -133,10 +162,20 @@ Expects to have a fully populated OCF RA-compliant environment set.
+ END
+ }
+ 
++nvmet_port_set_ana() {
++	[ -n "${OCF_RESKEY_ana_state}" ] || return "$OCF_SUCCESS"
++
++	grpdir="${portdir}/ana_groups/${OCF_RESKEY_ana_grpid}"
++	[ -d "${grpdir}" ] || mkdir "${grpdir}" || return "$OCF_ERR_GENERIC"
++	echo "${OCF_RESKEY_ana_state}" > "${grpdir}/ana_state" || return "$OCF_ERR_GENERIC"
++	return "$OCF_SUCCESS"
++}
++
+ nvmet_port_start() {
+ 	nvmet_port_monitor
+ 	if [ $? =  $OCF_SUCCESS ]; then
+-		return $OCF_SUCCESS
++		nvmet_port_set_ana
++		return
+ 	fi
+ 
+ 	mkdir ${portdir}
+@@ -145,6 +184,10 @@ nvmet_port_start() {
+ 	echo ${OCF_RESKEY_svcid} > ${portdir}/addr_trsvcid
+ 	echo ${OCF_RESKEY_addr_fam} > ${portdir}/addr_adrfam
+ 
++	# Before the subsystems are linked, so no host sees the port in the
++	# default state first.
++	nvmet_port_set_ana || return "$OCF_ERR_GENERIC"
++
+ 	for subsystem in ${OCF_RESKEY_nqns}; do
+ 		ln -s /sys/kernel/config/nvmet/subsystems/${subsystem} \
+ 		   ${portdir}/subsystems/${subsystem}
+@@ -163,6 +206,13 @@ nvmet_port_stop() {
+ 		rm ${portdir}/subsystems/${subsystem}
+ 	done
+ 
++	# Group 1 belongs to the port; any other group was made by start and
++	# keeps the port from being removed.
++	if [ "${OCF_RESKEY_ana_grpid}" != 1 ] &&
++	   [ -d "${portdir}/ana_groups/${OCF_RESKEY_ana_grpid}" ]; then
++		rmdir "${portdir}/ana_groups/${OCF_RESKEY_ana_grpid}"
++	fi
++
+ 	rmdir ${portdir}
+ 
+ 	return $OCF_SUCCESS
+@@ -192,6 +242,22 @@ nvmet_port_validate() {
+ 			;;
+ 	esac
+ 
++	# 128 is NVMET_MAX_ANAGRPS in the kernel's nvmet.h.
++	if ! ocf_is_decimal "${OCF_RESKEY_ana_grpid}" ||
++	   [ "${OCF_RESKEY_ana_grpid}" -lt 1 ] || [ "${OCF_RESKEY_ana_grpid}" -gt 128 ]; then
++		ocf_log err "ana_grpid must be between 1 and 128, got ${OCF_RESKEY_ana_grpid}"
++		exit "$OCF_ERR_CONFIGURED"
++	fi
++
++	case "${OCF_RESKEY_ana_state}" in
++		""|optimized|non-optimized|inaccessible|persistent-loss|change)
++			;;
++		*)
++			ocf_log err "ana_state must be optimized, non-optimized, inaccessible, persistent-loss or change. OCF_RESKEY_ana_state was set to $OCF_RESKEY_ana_state"
++			exit "$OCF_ERR_CONFIGURED"
++			;;
++	esac
++
+ 	if [ -z "${OCF_RESKEY_nqns}" ]; then
+ 		ocf_log err "subsystems may not be empty. OCF_RESKEY_nqns was set to $OCF_RESKEY_nqns"
+ 		exit $OCF_ERR_ARGS
+diff --git a/heartbeat/nvmet-subsystem b/heartbeat/nvmet-subsystem
+index 3a6b85eb..69cb1f68 100755
+--- a/heartbeat/nvmet-subsystem
++++ b/heartbeat/nvmet-subsystem
+@@ -35,6 +35,12 @@ OCF_RESKEY_allowed_initiators_default=""
+ 
+ OCF_RESKEY_serial_default=""
+ : ${OCF_RESKEY_serial=${OCF_RESKEY_serial_default}}
++
++OCF_RESKEY_cntlid_min_default=""
++: ${OCF_RESKEY_cntlid_min=${OCF_RESKEY_cntlid_min_default}}
++
++OCF_RESKEY_cntlid_max_default=""
++: ${OCF_RESKEY_cntlid_max=${OCF_RESKEY_cntlid_max_default}}
+ #######################################################################
+ 
+ meta_data() {
+@@ -84,6 +90,28 @@ to this target</shortdesc>
+ <content type="string" default="${OCF_RESKEY_serial_default}"/>
+ </parameter>
+ 
++<parameter name="cntlid_min" required="0" unique="0">
++<longdesc lang="en">
++Lowest controller ID this target hands out for the subsystem, 1 to 65519.
++When the same subsystem is exported from more than one node at a time,
++as with ANA, give each node a range that does not overlap the others:
++the host tells the controllers of a subsystem apart by their IDs.
++Unset leaves the kernel default.
++</longdesc>
++<shortdesc lang="en">Lowest controller ID</shortdesc>
++<content type="integer" default="${OCF_RESKEY_cntlid_min_default}"/>
++</parameter>
++
++<parameter name="cntlid_max" required="0" unique="0">
++<longdesc lang="en">
++Highest controller ID this target hands out for the subsystem, 1 to
++65519, and not below cntlid_min. See cntlid_min.
++Unset leaves the kernel default.
++</longdesc>
++<shortdesc lang="en">Highest controller ID</shortdesc>
++<content type="integer" default="${OCF_RESKEY_cntlid_max_default}"/>
++</parameter>
++
+ </parameters>
+ 
+ <actions>
+@@ -117,6 +145,10 @@ nvmet_subsystem_start() {
+ 	local subsys=/sys/kernel/config/nvmet/subsystems/${OCF_RESKEY_nqn}
+ 	mkdir ${subsys}
+ 	[ "${OCF_RESKEY_serial}" ] && echo ${OCF_RESKEY_serial} > ${subsys}/attr_serial
++	# The kernel rejects a min above the current max and a max below the
++	# current min.  A new subsystem spans 1..65519, so min goes first.
++	[ "${OCF_RESKEY_cntlid_min}" ] && echo "${OCF_RESKEY_cntlid_min}" > "${subsys}/attr_cntlid_min"
++	[ "${OCF_RESKEY_cntlid_max}" ] && echo "${OCF_RESKEY_cntlid_max}" > "${subsys}/attr_cntlid_max"
+ 
+ 	if [ -z "${OCF_RESKEY_allowed_initiators}" ]; then
+ 		echo 1 > ${subsys}/attr_allow_any_host
+@@ -149,6 +181,20 @@ nvmet_subsystem_monitor() {
+ }
+ 
+ nvmet_subsystem_validate() {
++	# 65519 is NVME_CNTLID_MAX; IDs above it are reserved.
++	for v in "${OCF_RESKEY_cntlid_min}" "${OCF_RESKEY_cntlid_max}"; do
++		[ -z "$v" ] && continue
++		if ! ocf_is_decimal "$v" || [ "$v" -lt 1 ] || [ "$v" -gt 65519 ]; then
++			ocf_log err "cntlid_min and cntlid_max must be between 1 and 65519, got $v"
++			exit "$OCF_ERR_CONFIGURED"
++		fi
++	done
++	if [ "${OCF_RESKEY_cntlid_min}" ] && [ "${OCF_RESKEY_cntlid_max}" ] &&
++	   [ "${OCF_RESKEY_cntlid_min}" -gt "${OCF_RESKEY_cntlid_max}" ]; then
++		ocf_log err "cntlid_min ${OCF_RESKEY_cntlid_min} is above cntlid_max ${OCF_RESKEY_cntlid_max}"
++		exit "$OCF_ERR_CONFIGURED"
++	fi
++
+ 	if [ ! -d /sys/kernel/config/nvmet ]; then
+ 	    ocf_log info "nvmet kernel module not loaded, attempting to load it..."
+ 	    modprobe nvmet 2>/dev/null
