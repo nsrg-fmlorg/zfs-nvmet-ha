@@ -5,7 +5,9 @@ on:
   push:
     branches: [spdk]
     paths:
-      - 'lab/spdk*'
+      - 'lab/spdk.sh'
+      - 'lab/spdk-build.sh'
+      - 'lab/spdk-agg.py'
       - 'lab/vms.sh'
       - '.github/workflows/spdk.yml'
 

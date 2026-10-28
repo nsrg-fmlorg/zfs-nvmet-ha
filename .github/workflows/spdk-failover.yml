@@ -1,0 +1,72 @@
+name: spdk-failover
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [spdk]
+    paths:
+      - 'lab/spdk-failover.sh'
+      - 'lab/node/**'
+      - '.github/workflows/spdk-failover.yml'
+
+concurrency:
+  group: spdk-failover-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  SPDK_TAG: v26.09
+
+jobs:
+  failover:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        rep: [1, 2, 3]
+    steps:
+      - uses: actions/checkout@v4
+
+      # Same key as spdk.yml, so the tarball it built is reused.
+      - name: Cache the SPDK build
+        id: cache
+        uses: actions/cache@v4
+        with:
+          path: work/spdk.tar.gz
+          key: spdk-${{ env.SPDK_TAG }}-${{ hashFiles('lab/spdk-build.sh') }}
+
+      - name: Build SPDK
+        if: steps.cache.outputs.cache-hit != 'true'
+        run: sh lab/spdk-build.sh
+
+      - name: Install qemu
+        run: |
+          sudo apt-get update -q
+          sudo apt-get install -yq --no-install-recommends \
+              qemu-system-x86 qemu-utils cloud-image-utils
+          sudo chmod 666 /dev/kvm
+
+      - name: Cache the cloud image
+        uses: actions/cache@v4
+        with:
+          path: work/base.img
+          key: noble-cloudimg-${{ github.run_id }}
+          restore-keys: noble-cloudimg-
+
+      # Default sizes: both controllers 2 vCPUs and 3G, the host 1 and 1.5G.
+      - name: Boot VMs
+        run: sh lab/vms.sh up
+
+      - name: SPDK failover
+        timeout-minutes: 30
+        run: sh lab/spdk-failover.sh
+
+      - name: Summary
+        if: always()
+        run: cat work/out/summary.md >> "$GITHUB_STEP_SUMMARY" 2>/dev/null || true
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: spdk-failover-logs-${{ matrix.rep }}
+          path: work/out
