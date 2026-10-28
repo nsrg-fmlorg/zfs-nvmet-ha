@@ -47,6 +47,9 @@ EOF
 
 vm_start() {
 	name=$1 n=$2 cpus=$3 mem=$4 shared=$5
+	# CTL_CPUS overrides ctl-a's core count, so SPDK's polling core does not
+	# starve ZFS; set here so the call lines below stay as they are.
+	[ "$name" = ctl-a ] && cpus=${CTL_CPUS:-$cpus}
 	d=$LAB/$name
 	disks=
 	if [ "$shared" = yes ]; then

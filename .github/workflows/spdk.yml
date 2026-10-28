@@ -80,7 +80,9 @@ jobs:
           restore-keys: noble-cloudimg-
 
       - name: Boot VMs
-        run: CTL_MEM=6G sh lab/vms.sh up
+        # ctl-a 4 vCPUs (the runner's 4 cores), ctl-b 2 and host 1 as before:
+        # 7 vCPUs on 4 cores, but only ctl-a works during this scenario.
+        run: CTL_CPUS=4 CTL_MEM=6G sh lab/vms.sh up
 
       - name: SPDK vs kernel nvmet
         timeout-minutes: 30
