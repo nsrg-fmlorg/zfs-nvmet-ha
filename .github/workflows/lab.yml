@@ -16,6 +16,11 @@ jobs:
   failover:
     runs-on: ubuntu-24.04
     timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        # MMP interval (ms) and fail intervals: the defaults, then shorter
+        mmp: ['1000 10', '500 10', '250 4']
     steps:
       - uses: actions/checkout@v4
 
@@ -38,7 +43,9 @@ jobs:
 
       - name: Failover
         timeout-minutes: 25
-        run: sh lab/failover.sh
+        run: |
+          set -- ${{ matrix.mmp }}
+          MMP_INTERVAL=$1 MMP_FAIL=$2 sh lab/failover.sh
 
       - name: Summary
         if: always()
@@ -58,5 +65,5 @@ jobs:
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: lab-logs
+          name: lab-logs-${{ strategy.job-index }}
           path: logs

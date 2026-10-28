@@ -38,6 +38,23 @@ for v in ctl-a ctl-b host; do
 	put "$v" "$HERE/node/blocks.py" /tmp/blocks.py
 done
 
+# MMP settings under test.  The importer's wait is computed from the
+# interval and fail count the previous owner stamped into its uberblocks
+# (spa_activity_check_duration), so ctl-a's values are the ones that
+# count; ctl-b gets the same so it behaves the same once it owns the pool.
+MMP_INTERVAL=${MMP_INTERVAL:-1000}
+MMP_FAIL=${MMP_FAIL:-10}
+for v in ctl-a ctl-b; do
+	on "$v" sudo sh -eu <<EOF
+modprobe zfs
+echo $MMP_INTERVAL > /sys/module/zfs/parameters/zfs_multihost_interval
+echo $MMP_FAIL > /sys/module/zfs/parameters/zfs_multihost_fail_intervals
+echo 1 > /sys/module/zfs/parameters/zfs_dbgmsg_enable
+echo 0 > /proc/spl/kstat/zfs/dbgmsg
+EOF
+done
+log "MMP interval ${MMP_INTERVAL} ms, fail intervals ${MMP_FAIL}"
+
 log "ctl-a: create pool on the shared disks, export the zvol"
 on ctl-a sudo sh -eux <<'EOF'
 zpool create -f -o multihost=on -O compression=lz4 tankA mirror \
@@ -108,6 +125,9 @@ awk -v a="$t0" -v b="$t1" -v c="$t2" -v d="$t3" 'BEGIN {
         d - a, b - a, c - b, d - c }'
 EOF
 cat "$OUT/takeover.txt"
+# The import's own account of where the time went.
+on ctl-b sudo cat /proc/spl/kstat/zfs/dbgmsg > "$OUT/ctl-b-dbgmsg.txt" || :
+grep -E 'mmp|activity|import|spa_load' "$OUT/ctl-b-dbgmsg.txt" | head -40 || :
 if [ $rc -ne 0 ]; then
 	echo "takeover failed ($rc)" >&2
 	kill "$writer" 2>/dev/null || :
@@ -132,9 +152,10 @@ log "host: verify every acknowledged block"
 on host sudo python3 /tmp/blocks.py verify "$DEV" "$last" | tee "$OUT/verify.txt"
 
 {
-	echo "### failover"
+	echo "### failover, MMP interval ${MMP_INTERVAL} ms, fail intervals ${MMP_FAIL}"
 	echo
 	echo "- kernel: $(on host uname -r)"
+	echo "- $(grep -m1 'mmp: settings' "$OUT/ctl-b-dbgmsg.txt" | sed 's/^[0-9]* *//')"
 	echo "- writes before power loss: $before"
 	echo "- $(grep '^takeover' "$OUT/takeover.txt")"
 	echo "- longest host I/O pause: $gap"
