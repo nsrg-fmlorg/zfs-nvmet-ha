@@ -56,6 +56,10 @@ vm_start() {
 			disks="$disks -drive file=$LAB/shared$i.raw,format=raw,if=none,id=sh$i,cache=none,aio=native,file.locking=off"
 			disks="$disks -device virtio-blk-pci,drive=sh$i,share-rw=on,serial=shared$i"
 		done
+		# And one disk of the controller's own, not shared, for a SLOG.
+		[ -f "$d/local.raw" ] || truncate -s 1G "$d/local.raw"
+		disks="$disks -drive file=$d/local.raw,format=raw,if=none,id=loc,cache=none,aio=native"
+		disks="$disks -device virtio-blk-pci,drive=loc,serial=local"
 	fi
 	# Not -daemonize: that discards qemu's stderr, and a guest that never
 	# prints to the console leaves nothing else to read.

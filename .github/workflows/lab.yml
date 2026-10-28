@@ -236,3 +236,44 @@ jobs:
           path: perf
       - name: Median over runs
         run: python3 lab/perf-agg.py perf/* | tee -a "$GITHUB_STEP_SUMMARY"
+
+  slog:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        mode: [none, local, mirror]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install qemu
+        run: |
+          sudo apt-get update -q
+          sudo apt-get install -yq --no-install-recommends \
+              qemu-system-x86 qemu-utils cloud-image-utils
+          sudo chmod 666 /dev/kvm
+
+      - name: Cache the cloud image
+        uses: actions/cache@v4
+        with:
+          path: work/base.img
+          key: noble-cloudimg-${{ github.run_id }}
+          restore-keys: noble-cloudimg-
+
+      - name: Boot VMs
+        run: sh lab/vms.sh up
+
+      - name: Power loss with the log ${{ matrix.mode }}
+        timeout-minutes: 30
+        run: SLOG_MODE=${{ matrix.mode }} sh lab/slog.sh
+
+      - name: Summary
+        if: always()
+        run: cat work/out/summary.md >> "$GITHUB_STEP_SUMMARY" 2>/dev/null || true
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: slog-logs-${{ matrix.mode }}
+          path: work/out
