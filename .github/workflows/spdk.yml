@@ -1,0 +1,110 @@
+name: spdk
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [spdk]
+    paths:
+      - 'lab/spdk*'
+      - 'lab/vms.sh'
+      - '.github/workflows/spdk.yml'
+
+concurrency:
+  group: spdk-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  SPDK_TAG: v26.09
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Cache the SPDK build
+        id: cache
+        uses: actions/cache@v4
+        with:
+          path: work/spdk.tar.gz
+          key: spdk-${{ env.SPDK_TAG }}-${{ hashFiles('lab/spdk-build.sh') }}
+
+      - name: Build SPDK
+        if: steps.cache.outputs.cache-hit != 'true'
+        run: sh lab/spdk-build.sh
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: spdk-tarball
+          path: work/spdk.tar.gz
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: spdk-build-logs
+          path: |
+            work/spdk-*.log
+            work/spdk-ldd.txt
+          if-no-files-found: ignore
+
+  measure:
+    needs: build
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        # Repeated: single runs on shared runners varied by up to seven times.
+        rep: [1, 2, 3]
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: spdk-tarball
+          path: work
+
+      - name: Install qemu
+        run: |
+          sudo apt-get update -q
+          sudo apt-get install -yq --no-install-recommends \
+              qemu-system-x86 qemu-utils cloud-image-utils
+          sudo chmod 666 /dev/kvm
+
+      - name: Cache the cloud image
+        uses: actions/cache@v4
+        with:
+          path: work/base.img
+          key: noble-cloudimg-${{ github.run_id }}
+          restore-keys: noble-cloudimg-
+
+      - name: Boot VMs
+        run: CTL_MEM=6G sh lab/vms.sh up
+
+      - name: SPDK vs kernel nvmet
+        timeout-minutes: 30
+        run: sh lab/spdk.sh
+
+      - name: Summary
+        if: always()
+        run: cat work/out/summary.md >> "$GITHUB_STEP_SUMMARY" 2>/dev/null || true
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: spdk-logs-${{ matrix.rep }}
+          path: work/out
+
+  summary:
+    needs: measure
+    if: always()
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: spdk-logs-*
+          path: runs
+      - name: Median over runs
+        run: python3 lab/spdk-agg.py runs/* | tee -a "$GITHUB_STEP_SUMMARY"
