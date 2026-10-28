@@ -13,8 +13,12 @@ import statistics
 import sys
 
 PATHS = ["k-raw", "s-null", "s-raw", "k-zvol", "s-zvol"]
+# syncwrite as IOPS of write+fsync pairs: its write latency alone is
+# meaningless here (the kernel path returns writes in about 1 us and the
+# wait lands in fsync).
 JOBS = [("randread", "read", "kIOPS"), ("randwrite", "write", "kIOPS"),
-        ("syncwrite", "write", "us p50"), ("seqread", "read", "MiB/s")]
+        ("syncwrite", "write", "kIOPS"), ("seqread", "read", "MiB/s")]
+PAIRS = [("s-null", "k-raw"), ("s-raw", "k-raw"), ("s-zvol", "k-zvol")]
 
 
 def figure(d, path, job, side, unit):
@@ -51,3 +55,17 @@ for p in PATHS:
     except (OSError, KeyError, ValueError, statistics.StatisticsError):
         continue
     print(f"| {p} | " + " | ".join(cells) + " |")
+
+# The runners differ in speed by up to four times between runs, but each
+# run compares its paths on one machine, so take SPDK / kernel per run
+# and then the median of those ratios.
+print("\n### SPDK / kernel, ratio per run, median (min-max)\n")
+print("| pair | " + " | ".join(j for j, _, _ in JOBS) + " |")
+print("|---|" + "---|" * len(JOBS))
+for a, b in PAIRS:
+    try:
+        cells = [cell([figure(d, a, j, s, u) / figure(d, b, j, s, u) for d in dirs], ".2f")
+                 for j, s, u in JOBS]
+    except (OSError, KeyError, ValueError, ZeroDivisionError, statistics.StatisticsError):
+        continue
+    print(f"| {a} / {b} | " + " | ".join(cells) + " |")
