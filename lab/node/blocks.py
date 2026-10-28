@@ -34,9 +34,13 @@ def write(dev):
     while True:
         buf.seek(0)
         buf.write(block(i))
-        os.pwrite(fd, buf, i * BS)
         # monotonic: the guest's wall clock may be stepped mid-run
-        print(i, "%.3f" % time.monotonic(), flush=True)
+        t0 = time.monotonic()
+        n = os.pwrite(fd, buf, i * BS)
+        if n != BS:
+            sys.exit("short write at %d: %d bytes" % (i, n))
+        # index, completion time, issue time
+        print(i, "%.3f" % time.monotonic(), "%.3f" % t0, flush=True)
         i += 1
 
 

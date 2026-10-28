@@ -16,7 +16,7 @@ MCAST=230.0.0.1:12345
 mkdir -p "$LAB"
 
 vm_seed() {
-	name=$1 n=$2
+	name=$1 n=$2 extra=${3:-}
 	d=$LAB/$name
 	mkdir -p "$d"
 	cat > "$d/user-data" <<EOF
@@ -25,7 +25,7 @@ hostname: $name
 ssh_authorized_keys:
   - $(cat "$LAB/id_ed25519.pub")
 package_update: true
-packages: [zfsutils-linux, nvme-cli, python3]
+packages: [zfsutils-linux, nvme-cli, python3$extra]
 runcmd:
   - apt-get install -y linux-modules-extra-\$(uname -r)
   - zgenhostid -f 0x0000a00$n
@@ -92,7 +92,10 @@ up)
 	for i in 0 1; do
 		[ -f "$LAB/shared$i.raw" ] || truncate -s 4G "$LAB/shared$i.raw"
 	done
-	vm_seed ctl-a 1; vm_seed ctl-b 2; vm_seed host 3
+	# The controllers also get the cluster stack and the stock agents
+	# (ocf-shellfuncs, ZFS, Delay); the host needs neither.
+	ha=', pacemaker, corosync, resource-agents-base, resource-agents-extra, libxml2-utils, git'
+	vm_seed ctl-a 1 "$ha"; vm_seed ctl-b 2 "$ha"; vm_seed host 3
 	vm_start ctl-a 1 2 3G yes
 	vm_start ctl-b 2 2 3G yes
 	vm_start host 3 1 1536M no

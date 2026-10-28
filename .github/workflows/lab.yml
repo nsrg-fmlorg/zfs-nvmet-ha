@@ -135,3 +135,46 @@ jobs:
           echo "before: $(awk '{ s += $1 } END { print s + 0 }' before.txt) findings, after: $(awk '{ s += $1 } END { print s + 0 }' after.txt)"
           if [ -s new.txt ]; then echo "new findings:"; cat new.txt; exit 1; fi
           echo "no new findings"
+
+  pacemaker:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 50
+    strategy:
+      fail-fast: false
+      matrix:
+        # Repeated: one run in five so far saw a write complete while no
+        # node exported the namespace.
+        rep: [1, 2, 3, 4, 5]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install qemu
+        run: |
+          sudo apt-get update -q
+          sudo apt-get install -yq --no-install-recommends \
+              qemu-system-x86 qemu-utils cloud-image-utils
+          sudo chmod 666 /dev/kvm
+
+      - name: Cache the cloud image
+        uses: actions/cache@v4
+        with:
+          path: work/base.img
+          key: noble-cloudimg-${{ github.run_id }}
+          restore-keys: noble-cloudimg-
+
+      - name: Boot VMs
+        run: sh lab/vms.sh up
+
+      - name: Pacemaker failover
+        timeout-minutes: 30
+        run: sh lab/pacemaker.sh
+
+      - name: Summary
+        if: always()
+        run: cat work/out/summary.md >> "$GITHUB_STEP_SUMMARY" 2>/dev/null || true
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: pacemaker-logs-${{ matrix.rep }}
+          path: work/out
