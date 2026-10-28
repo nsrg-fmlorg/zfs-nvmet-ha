@@ -82,8 +82,12 @@ mk() {
 	echo 1 > $C/subsystems/$1/namespaces/1/enable
 	ln -s $C/subsystems/$1 $C/ports/1/subsystems/$1
 }
-mk k-raw /dev/nullb0
-mk k-zvol /dev/zvol/perf/vol
+# SPDK rejects NQNs that are not of the nqn.yyyy-mm.reverse.domain:name
+# form (lib/nvmf/subsystem.c); the kernel takes anything.  Both get the
+# full form so that the names compare the same way.
+P=nqn.2026-10.org.fml.nsrg:
+mk ${P}k-raw /dev/nullb0
+mk ${P}k-zvol /dev/zvol/perf/vol
 
 # SPDK target, TCP on 127.0.0.1:4421, one core, its RPC socket in /run.
 echo 512 > /proc/sys/vm/nr_hugepages
@@ -98,15 +102,15 @@ rpc bdev_null_create snull 1024 4096
 rpc bdev_uring_create /dev/nullb0 sraw 4096
 rpc bdev_uring_create /dev/zvol/perf/vol szvol 4096
 for s in s-null:snull s-raw:sraw s-zvol:szvol; do
-	nqn=${s%%:*} bdev=${s#*:}
-	rpc nvmf_create_subsystem -a -s SPDK$(echo $nqn | tr -d -) $nqn
+	nqn=$P${s%%:*} bdev=${s#*:}
+	rpc nvmf_create_subsystem -a -s SPDK$(echo ${s%%:*} | tr -d -) $nqn
 	rpc nvmf_subsystem_add_ns $nqn $bdev
 	rpc nvmf_subsystem_add_listener $nqn -t tcp -f ipv4 -a 127.0.0.1 -s 4421
 done
 
 # The kernel host connects to all five.
-for s in k-raw k-zvol; do nvme connect -t tcp -a 127.0.0.1 -s 4420 -n $s; done
-for s in s-null s-raw s-zvol; do nvme connect -t tcp -a 127.0.0.1 -s 4421 -n $s; done
+for s in k-raw k-zvol; do nvme connect -t tcp -a 127.0.0.1 -s 4420 -n $P$s; done
+for s in s-null s-raw s-zvol; do nvme connect -t tcp -a 127.0.0.1 -s 4421 -n $P$s; done
 udevadm settle
 sleep 2
 for d in /sys/class/nvme/nvme*; do echo "${d##*/} $(cat $d/subsysnqn)"; done
@@ -116,7 +120,7 @@ grep -v '^+' "$OUT/spdk-setup.txt" | tail -n 12
 dev_of() {
 	# The trailing true: a last non-matching test would leave the loop with
 	# status 1, and set -e would stop the script on it.
-	on ctl-a "for d in /sys/class/nvme/nvme*; do [ \"\$(cat \$d/subsysnqn)\" = $1 ] && echo /dev/\${d##*/}n1; done; true"
+	on ctl-a "for d in /sys/class/nvme/nvme*; do [ \"\$(cat \$d/subsysnqn)\" = nqn.2026-10.org.fml.nsrg:$1 ] && echo /dev/\${d##*/}n1; done; true"
 }
 
 # Same jobs as lab/perf.sh, with whole-VM CPU from /proc/stat around each.
