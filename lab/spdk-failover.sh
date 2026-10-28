@@ -85,7 +85,13 @@ log "ctl-a: create the pool, export its zvol through SPDK"
 on ctl-a sudo sh -eux <<EOF
 zpool create -f -o multihost=on -O compression=lz4 tankA mirror \
     /dev/disk/by-id/virtio-shared0 /dev/disk/by-id/virtio-shared1
-zfs create -V 1G -o volblocksize=16k tankA/vol1
+# sync=always: SPDK's bdev_uring declares no volatile write cache
+# (module/bdev/uring/bdev_uring.c, write_cache = 0; FLUSH unsupported;
+# the zvol is opened O_DIRECT without O_DSYNC), so the host sends neither
+# FUA nor flushes.  A zvol does have one (zvol_os.c sets the queue's write
+# cache and FUA) and commits the ZIL only on FUA or sync=always.  Without
+# this, three runs lost 1372-1925 acknowledged blocks at the power loss.
+zfs create -V 1G -o volblocksize=16k -o sync=always tankA/vol1
 udevadm settle
 for i in \$(seq 30); do [ -e /dev/zvol/tankA/vol1 ] && break; sleep 1; done
 rpc() { python3 /opt/spdk/scripts/rpc.py -s /run/spdk.sock "\$@"; }
