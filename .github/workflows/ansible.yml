@@ -10,7 +10,7 @@ on:
     paths:
       - 'ansible/**'
       - 'lab/vms.sh'
-      - 'lab/patches/**'
+      - 'lab/patches/resource-agents-*'
       - '.github/workflows/ansible.yml'
 
 concurrency:

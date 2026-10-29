@@ -1,5 +1,5 @@
 From 2ce44fbc4b7ea1b87373d8dbdaefd42a25f1cec6 Mon Sep 17 00:00:00 2001
-From: Zakinko <zakinko@snowrabbit.org>
+From: Showta Ishizaki <zakinko@snowrabbit.org>
 Date: Thu, 29 Oct 2026 23:24:41 +0900
 Subject: [PATCH] Fix: controller: offer the DC itself when an unknown node
  joins

@@ -13,7 +13,7 @@ on:
       - 'lab/pacemaker.sh'
       - 'lab/pacemaker2.sh'
       - 'lab/node/**'
-      - 'lab/patches/**'
+      - 'lab/patches/resource-agents-*'
       - '.github/workflows/distros.yml'
 
 concurrency:

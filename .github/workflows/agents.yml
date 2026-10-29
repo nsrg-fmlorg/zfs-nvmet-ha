@@ -11,7 +11,7 @@ on:
     paths:
       - 'lab/agents.sh'
       - 'lab/vms.sh'
-      - 'lab/patches/**'
+      - 'lab/patches/resource-agents-*'
       - '.github/workflows/agents.yml'
 
 concurrency:
