@@ -1,0 +1,53 @@
+Oct 29 13:39:53.406 localhost pacemaker-controld  [15650] (do_state_transition) 	notice: State transition S_IDLE -> S_POLICY_ENGINE | input=I_PE_CALC cause=C_FSA_INTERNAL origin=abort_transition_graph
+Oct 29 13:39:54.432 localhost pacemaker-controld  [15650] (do_state_transition) 	info: State transition S_POLICY_ENGINE -> S_TRANSITION_ENGINE | input=I_PE_SUCCESS cause=C_IPC_MESSAGE origin=handle_reply
+Oct 29 13:39:55.229 localhost pacemaker-controld  [15650] (do_state_transition) 	info: State transition S_TRANSITION_ENGINE -> S_INTEGRATION | input=I_NODE_JOIN cause=C_FSA_INTERNAL origin=peer_update_callback
+Oct 29 13:39:55.481 localhost pacemaker-controld  [15650] (do_dc_join_filter_offer) 	debug: Accepting join-1 request from ctl-a (with better CIB generation than current best from ctl-b) | ref=join_request-crmd-1793281195-5
+Oct 29 13:39:55.482 localhost pacemaker-controld  [15650] (do_dc_join_filter_offer) 	debug: Accepting join-1 request from ctl-a | ref=join_request-crmd-1793281195-6
+Oct 29 13:39:57.874 localhost pacemaker-controld  [15650] (do_dc_join_filter_offer) 	debug: Accepting join-1 request from ctl-b (with better CIB generation than current best from ctl-a) | ref=join_request-crmd-1793281195-50
+Oct 29 13:39:57.874 localhost pacemaker-controld  [15650] (do_state_transition) 	info: State transition S_INTEGRATION -> S_FINALIZE_JOIN | input=I_INTEGRATED cause=C_FSA_INTERNAL origin=check_join_state
+Oct 29 13:39:57.874 localhost pacemaker-controld  [15650] (controld_start_timer) 	debug: Started Finalization Timer (inject I_ELECTION if pops after 300000ms, source=184)
+Oct 29 13:39:57.874 localhost pacemaker-controld  [15650] (do_dc_join_finalize) 	warning: Delaying join-1 finalization while transition in progress
+Oct 29 13:39:57.874 localhost pacemaker-controld  [15650] (do_dc_join_finalize) 	warning: Delaying join-1 finalization while transition in progress
+Oct 29 13:39:57.874 localhost pacemaker-controld  [15650] (do_dc_join_finalize) 	warning: Delaying join-1 finalization while transition in progress
+Oct 29 13:39:58.094 localhost pacemaker-controld  [15650] (do_dc_join_finalize) 	warning: Delaying join-1 finalization while transition in progress
+Oct 29 13:40:03.271 localhost pacemaker-controld  [15650] (do_dc_join_finalize) 	warning: Delaying join-1 finalization while transition in progress
+Oct 29 13:40:03.271 localhost pacemaker-controld  [15650] (do_dc_join_finalize) 	warning: Delaying join-1 finalization while transition in progress
+Oct 29 13:40:04.095 localhost pacemaker-controld  [15650] (do_dc_join_finalize) 	warning: Delaying join-1 finalization while transition in progress
+Oct 29 13:40:08.666 localhost pacemaker-controld  [15650] (do_dc_join_finalize) 	warning: Delaying join-1 finalization while transition in progress
+Oct 29 13:40:08.667 localhost pacemaker-controld  [15650] (do_dc_join_finalize) 	warning: Delaying join-1 finalization while transition in progress
+Oct 29 13:40:10.095 localhost pacemaker-controld  [15650] (do_dc_join_finalize) 	warning: Delaying join-1 finalization while transition in progress
+Oct 29 13:40:14.072 localhost pacemaker-controld  [15650] (do_dc_join_finalize) 	warning: Delaying join-1 finalization while transition in progress
+Oct 29 13:40:14.073 localhost pacemaker-controld  [15650] (do_dc_join_finalize) 	warning: Delaying join-1 finalization while transition in progress
+Oct 29 13:40:16.095 localhost pacemaker-controld  [15650] (do_dc_join_finalize) 	warning: Delaying join-1 finalization while transition in progress
+Oct 29 13:40:19.458 localhost pacemaker-controld  [15650] (do_dc_join_finalize) 	warning: Delaying join-1 finalization while transition in progress
+Oct 29 13:40:19.458 localhost pacemaker-controld  [15650] (do_dc_join_finalize) 	warning: Delaying join-1 finalization while transition in progress
+Oct 29 13:40:22.095 localhost pacemaker-controld  [15650] (do_dc_join_finalize) 	warning: Delaying join-1 finalization while transition in progress
+Oct 29 13:40:24.477 localhost pacemaker-controld  [15650] (do_dc_join_finalize) 	warning: Delaying join-1 finalization while transition in progress
+Oct 29 13:40:24.864 localhost pacemaker-controld  [15650] (do_dc_join_finalize) 	warning: Delaying join-1 finalization while transition in progress
+Oct 29 13:40:24.864 localhost pacemaker-controld  [15650] (do_dc_join_finalize) 	warning: Delaying join-1 finalization while transition in progress
+Oct 29 13:40:28.095 localhost pacemaker-controld  [15650] (do_dc_join_finalize) 	warning: Delaying join-1 finalization while transition in progress
+Oct 29 13:40:30.266 localhost pacemaker-controld  [15650] (do_dc_join_finalize) 	warning: Delaying join-1 finalization while transition in progress
+Oct 29 13:40:30.266 localhost pacemaker-controld  [15650] (do_dc_join_finalize) 	warning: Delaying join-1 finalization while transition in progress
+Oct 29 13:40:34.095 localhost pacemaker-controld  [15650] (do_dc_join_finalize) 	warning: Delaying join-1 finalization while transition in progress
+Oct 29 13:40:35.679 localhost pacemaker-controld  [15650] (do_dc_join_finalize) 	warning: Delaying join-1 finalization while transition in progress
+Oct 29 13:40:35.680 localhost pacemaker-controld  [15650] (do_dc_join_finalize) 	warning: Delaying join-1 finalization while transition in progress
+Oct 29 13:40:35.680 localhost pacemaker-controld  [15650] (do_dc_join_finalize) 	warning: Delaying join-1 finalization while transition in progress
+Oct 29 13:40:40.095 localhost pacemaker-controld  [15650] (do_dc_join_finalize) 	warning: Delaying join-1 finalization while transition in progress
+Oct 29 13:40:41.142 localhost pacemaker-controld  [15650] (do_dc_join_finalize) 	warning: Delaying join-1 finalization while transition in progress
+Oct 29 13:40:41.143 localhost pacemaker-controld  [15650] (do_dc_join_finalize) 	warning: Delaying join-1 finalization while transition in progress
+Oct 29 13:40:41.143 localhost pacemaker-controld  [15650] (do_dc_join_finalize) 	warning: Delaying join-1 finalization while transition in progress
+Oct 29 13:40:41.216 localhost pacemaker-controld  [15650] (do_dc_join_finalize) 	warning: Delaying join-1 finalization while transition in progress
+Oct 29 13:40:41.218 localhost pacemaker-controld  [15650] (do_state_transition) 	info: State transition S_FINALIZE_JOIN -> S_INTEGRATION | input=I_NODE_JOIN cause=C_FSA_INTERNAL origin=check_join_state
+Oct 29 13:40:41.218 localhost pacemaker-controld  [15650] (do_state_transition) 	info: State transition S_INTEGRATION -> S_FINALIZE_JOIN | input=I_INTEGRATED cause=C_FSA_INTERNAL origin=check_join_state
+Oct 29 13:40:41.218 localhost pacemaker-controld  [15650] (controld_start_timer) 	debug: Started Finalization Timer (inject I_ELECTION if pops after 300000ms, source=223)
+Oct 29 13:40:41.218 localhost pacemaker-controld  [15650] (do_dc_join_finalize) 	warning: Delaying join-1 finalization while transition in progress
+Oct 29 13:40:41.218 localhost pacemaker-controld  [15650] (do_dc_join_finalize) 	warning: Delaying join-1 finalization while transition in progress
+Oct 29 13:40:41.218 localhost pacemaker-controld  [15650] (do_dc_join_finalize) 	warning: Delaying join-1 finalization while transition in progress
+Oct 29 13:40:44.469 localhost pacemaker-controld  [15650] (do_dc_join_finalize) 	warning: Delaying join-1 finalization while transition in progress
+Oct 29 13:40:44.471 localhost pacemaker-controld  [15650] (do_dc_join_finalize) 	warning: Delaying join-1 finalization while transition in progress
+Oct 29 13:40:44.471 localhost pacemaker-controld  [15650] (do_dc_join_finalize) 	debug: Finalizing join-1 for 1 node (sync'ing from local CIB)
+Oct 29 13:40:44.472 localhost pacemaker-controld  [15650] (check_join_state) 	debug: join-1: Still waiting on 1 integrated node | state=S_FINALIZE_JOIN for=finalize_sync_callback
+Oct 29 13:40:44.484 localhost pacemaker-controld  [15650] (check_join_state) 	debug: join-1: Complete | state=S_FINALIZE_JOIN for=join_node_state_commit_callback
+Oct 29 13:40:44.484 localhost pacemaker-controld  [15650] (do_state_transition) 	info: State transition S_FINALIZE_JOIN -> S_POLICY_ENGINE | input=I_FINALIZED cause=C_FSA_INTERNAL origin=check_join_state
+Oct 29 13:40:45.500 localhost pacemaker-controld  [15650] (do_state_transition) 	info: State transition S_POLICY_ENGINE -> S_TRANSITION_ENGINE | input=I_PE_SUCCESS cause=C_IPC_MESSAGE origin=handle_reply
+Oct 29 13:40:45.543 localhost pacemaker-controld  [15650] (do_state_transition) 	notice: State transition S_TRANSITION_ENGINE -> S_IDLE | input=I_TE_SUCCESS cause=C_FSA_INTERNAL origin=notify_crmd
