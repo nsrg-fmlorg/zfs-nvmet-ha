@@ -1,0 +1,1 @@
+Oct 29 15:06:35.643522 localhost fence_lab[16325]: reboot ctl-a (10.10.0.11) in 40s
