@@ -1,0 +1,7 @@
+# The lab's shared disks are whole virtio disks; split each in two, as a
+# dual-ported drive would be split in two namespaces.  Inventory
+# group_vars outrank the playbook's group_vars/all.yml, where the
+# defaults are; an INI [zfs_ha:vars] section would not.
+zfs_ha_partition_disks:
+  - /dev/disk/by-id/virtio-shared0
+  - /dev/disk/by-id/virtio-shared1

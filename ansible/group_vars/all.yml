@@ -1,0 +1,65 @@
+# Defaults for every setting.  An inventory's own group_vars/zfs_ha.yml
+# overrides them (inventory/lab/ does).  Per-node values (address, node
+# id, hostid, cntlid range, port id) are in the inventory.
+
+# kmod: OpenZFS's kABI-tracking kmod, no compiler on the node, but only
+# for the kernels of the current EL minor release.  dkms: built on the
+# node from source against the running kernel.
+zfs_ha_zfs_style: kmod
+# OpenZFS's packages for EL10 that this was measured with (2.4.x) are in
+# its testing repository, and the zfs-release that defines it is only
+# published under epel-testing/10/.  EL9 uses the stable repository and
+# the zfs-release OpenZFS documents for EL 8 to 10.
+zfs_ha_zfs_testing: "{{ ansible_facts['distribution_major_version'] == '10' }}"
+zfs_ha_zfs_release: "{{ 'http://download.zfsonlinux.org/epel-testing/10/zfs-release-3-1.el10.noarch.rpm'
+  if ansible_facts['distribution_major_version'] == '10'
+  else 'https://zfsonlinux.org/epel/zfs-release-3-0.el' ~ ansible_facts['distribution_major_version'] ~ '.noarch.rpm' }}"
+zfs_ha_zfs_repo: "zfs{{ '-testing' if zfs_ha_zfs_testing | bool else '' }}{{ '-kmod' if zfs_ha_zfs_style == 'kmod' else '' }}"
+
+zfs_ha_nqn: nqn.2026-10.org.fml.nsrg:zfs-nvmet-ha
+# Both nodes export the same serial so the host's native multipath sees
+# one subsystem through two controllers.
+zfs_ha_serial: 5a46534e564d4554
+zfs_ha_cluster_name: zfs-ha
+
+# ClusterLabs/resource-agents commit the nvmet patch is made against.
+zfs_ha_ra_commit: 81e937fdb694d39aafbb9ac8ca415b188bb0751b
+zfs_ha_ra_patch: "{{ playbook_dir }}/../lab/patches/resource-agents-nvmet-ana-cntlid.diff"
+
+# One entry per pool.  Each pool normally runs on "prefers" and moves to
+# the other node when that one fails.  nsid and uuid identify the
+# namespace the pool's zvol is exported as; uuid is also used as NGUID.
+zfs_ha_pools:
+  - name: tankA
+    prefers: ctl-a
+    nsid: 1
+    uuid: 6c0a8d2e-0f5e-4b8a-9a52-3d1c2b7f0001
+    vdevs: [mirror, /dev/disk/by-id/virtio-shared0-part1, /dev/disk/by-id/virtio-shared1-part1]
+    zvol_size: 1G
+  - name: tankB
+    prefers: ctl-b
+    nsid: 2
+    uuid: 6c0a8d2e-0f5e-4b8a-9a52-3d1c2b7f0002
+    vdevs: [mirror, /dev/disk/by-id/virtio-shared0-part2, /dev/disk/by-id/virtio-shared1-part2]
+    zvol_size: 1G
+
+# Creating pools writes to the shared disks.  It only happens when this
+# is set on the command line (-e zfs_ha_create_pools=true), only for a
+# pool that "zpool import" does not already find, and only on the first
+# controller.  Nothing in the playbook destroys a pool.
+zfs_ha_create_pools: false
+
+# Lab only: split whole disks into the partitions the vdevs above name,
+# standing in for the two namespaces of a dual-ported drive.  A disk that
+# already has a partition table is left alone.
+zfs_ha_partition_disks: []
+zfs_ha_partition_layout: "label: gpt\n,2000MiB\n,\n"
+
+# Fencing.  Off by default because the lab has no fence device; see
+# README.md.  With it off, only ZFS multihost (MMP) stands between a
+# split cluster and both nodes importing the same pool.
+zfs_ha_stonith_enabled: false
+
+# Corosync traffic is authenticated and encrypted with a key generated on
+# the first controller.
+zfs_ha_corosync_crypto: true
