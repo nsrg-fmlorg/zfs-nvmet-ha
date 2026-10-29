@@ -52,6 +52,9 @@ jobs:
     needs: build
     runs-on: ubuntu-24.04
     steps:
+      - uses: actions/checkout@v4
+        with:
+          path: src
       - uses: actions/download-artifact@v4
         with:
           path: rpms
@@ -64,25 +67,9 @@ jobs:
           for el in 9 10; do
             [ -d rpms/pcmk-el$el ] && cp -r rpms/pcmk-el$el "$r/el$el"
           done
-          cat > "$r/README.md" <<EOF
-          # Pacemaker with the join finalization fix
-
-          AlmaLinux's pacemaker rebuilt with lab/patches/pacemaker-*-join-offer-self.patch
-          (release suffix .lab1), from $SHA.  The DC no longer waits in S_FINALIZE_JOIN
-          until join-finalization-timeout when a node rejoins while being fenced.
-
-          | directory | packages |
-          |---|---|
-          | el9/ | $(cd "$r/el9" 2>/dev/null && ls pacemaker-2*.x86_64.rpm 2>/dev/null | head -n 1) |
-          | el10/ | $(cd "$r/el10" 2>/dev/null && ls pacemaker-3*.x86_64.rpm 2>/dev/null | head -n 1) |
-
-          Each directory is a dnf repository (repodata/) with the source RPM in SRPMS/.
-          Install over the distribution's packages on every node, then restart the cluster
-          one node at a time:
-
-              dnf install ./pacemaker-*.rpm   # the names already installed
-          EOF
-          sed -i 's/^          //' "$r/README.md"
+          # What the fix is, why, and how it was checked (English and Japanese).
+          cp src/lab/patches/pacemaker-joinfix-README.md "$r/README.md"
+          printf '\nBuilt from %s.\n' "$SHA" >> "$r/README.md"
           cd "$r"
           git init -q -b pacemaker-joinfix-rpms
           git add .
