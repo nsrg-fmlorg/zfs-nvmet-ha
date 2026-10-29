@@ -1,0 +1,16 @@
+Oct 29 12:58:37.220 localhost pacemaker-controld  [15771] (do_state_transition) 	notice: State transition S_IDLE -> S_POLICY_ENGINE | input=I_PE_CALC cause=C_FSA_INTERNAL origin=abort_transition_graph
+Oct 29 12:58:37.222 localhost pacemaker-controld  [15771] (do_state_transition) 	info: State transition S_POLICY_ENGINE -> S_INTEGRATION | input=I_NODE_JOIN cause=C_FSA_INTERNAL origin=peer_update_callback
+Oct 29 12:58:37.664 localhost pacemaker-controld  [15771] (do_dc_join_filter_offer) 	debug: Accepting join-1 request from ctl-a (with better CIB generation than current best from ctl-b) | ref=join_request-crmd-1793278717-5
+Oct 29 12:58:37.665 localhost pacemaker-controld  [15771] (do_dc_join_filter_offer) 	debug: Accepting join-1 request from ctl-a | ref=join_request-crmd-1793278717-6
+Oct 29 12:58:37.665 localhost pacemaker-controld  [15771] (do_dc_join_filter_offer) 	debug: Accepting join-1 request from ctl-b | ref=join_request-crmd-1793278717-44
+Oct 29 12:58:37.665 localhost pacemaker-controld  [15771] (do_state_transition) 	info: State transition S_INTEGRATION -> S_FINALIZE_JOIN | input=I_INTEGRATED cause=C_FSA_INTERNAL origin=check_join_state
+Oct 29 12:58:37.665 localhost pacemaker-controld  [15771] (controld_start_timer) 	debug: Started Finalization Timer (inject I_ELECTION if pops after 300000ms, source=163)
+Oct 29 12:58:37.665 localhost pacemaker-controld  [15771] (do_dc_join_finalize) 	notice: Finalizing join-1 for 2 nodes (sync'ing CIB from ctl-a)
+Oct 29 12:58:37.673 localhost pacemaker-controld  [15771] (check_join_state) 	debug: join-1: Still waiting on 2 integrated nodes | state=S_FINALIZE_JOIN for=finalize_sync_callback
+Oct 29 12:58:37.681 localhost pacemaker-controld  [15771] (check_join_state) 	debug: join-1: Still waiting on 1 finalized node | state=S_FINALIZE_JOIN for=join_node_state_commit_callback
+Oct 29 12:58:37.685 localhost pacemaker-controld  [15771] (check_join_state) 	debug: join-1: Complete | state=S_FINALIZE_JOIN for=join_node_state_commit_callback
+Oct 29 12:58:37.685 localhost pacemaker-controld  [15771] (do_state_transition) 	info: State transition S_FINALIZE_JOIN -> S_POLICY_ENGINE | input=I_FINALIZED cause=C_FSA_INTERNAL origin=check_join_state
+Oct 29 12:58:38.720 localhost pacemaker-controld  [15771] (do_state_transition) 	info: State transition S_POLICY_ENGINE -> S_TRANSITION_ENGINE | input=I_PE_SUCCESS cause=C_IPC_MESSAGE origin=handle_reply
+Oct 29 12:58:38.777 localhost pacemaker-controld  [15771] (do_state_transition) 	info: State transition S_TRANSITION_ENGINE -> S_POLICY_ENGINE | input=I_PE_CALC cause=C_FSA_INTERNAL origin=notify_crmd
+Oct 29 12:58:38.798 localhost pacemaker-controld  [15771] (do_state_transition) 	info: State transition S_POLICY_ENGINE -> S_TRANSITION_ENGINE | input=I_PE_SUCCESS cause=C_IPC_MESSAGE origin=handle_reply
+Oct 29 12:58:38.822 localhost pacemaker-controld  [15771] (do_state_transition) 	notice: State transition S_TRANSITION_ENGINE -> S_IDLE | input=I_TE_SUCCESS cause=C_FSA_INTERNAL origin=notify_crmd
