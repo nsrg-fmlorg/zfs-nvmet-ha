@@ -33,26 +33,28 @@ mkdir -p "$LAB"
 # kABI-tracking kmod repository.
 setup_script() {
 	ha=$1
+	# Mirrors hand out a broken repomd.xml or index now and then; retry.
+	echo 'r() { for i in 1 2 3 4 5; do "$@" && return; sleep 20; done; return 1; }'
 	case $DISTRO in
 	ubuntu)
-		echo "apt-get update -q"
-		echo "DEBIAN_FRONTEND=noninteractive apt-get install -yq zfsutils-linux nvme-cli python3 linux-modules-extra-\$(uname -r)"
-		[ -z "$ha" ] || echo "DEBIAN_FRONTEND=noninteractive apt-get install -yq pacemaker corosync resource-agents-base resource-agents-extra libxml2-utils git"
+		echo "r apt-get update -q"
+		echo "r env DEBIAN_FRONTEND=noninteractive apt-get install -yq zfsutils-linux nvme-cli python3 linux-modules-extra-\$(uname -r)"
+		[ -z "$ha" ] || echo "r env DEBIAN_FRONTEND=noninteractive apt-get install -yq pacemaker corosync resource-agents-base resource-agents-extra libxml2-utils git"
 		;;
 	debian)
 		echo "sed -i 's/^Components: main\$/Components: main contrib/' /etc/apt/sources.list.d/debian.sources"
-		echo "apt-get update -q"
-		echo "DEBIAN_FRONTEND=noninteractive apt-get install -yq linux-headers-\$(uname -r) zfs-dkms zfsutils-linux nvme-cli python3"
-		[ -z "$ha" ] || echo "DEBIAN_FRONTEND=noninteractive apt-get install -yq pacemaker corosync resource-agents libxml2-utils git"
+		echo "r apt-get update -q"
+		echo "r env DEBIAN_FRONTEND=noninteractive apt-get install -yq linux-headers-\$(uname -r) zfs-dkms zfsutils-linux nvme-cli python3"
+		[ -z "$ha" ] || echo "r env DEBIAN_FRONTEND=noninteractive apt-get install -yq pacemaker corosync resource-agents libxml2-utils git"
 		;;
 	alma)
-		echo "dnf install -yq https://zfsonlinux.org/epel/zfs-release-2-3.el9.noarch.rpm"
+		echo "r dnf install -yq https://zfsonlinux.org/epel/zfs-release-2-3.el9.noarch.rpm"
 		echo "dnf config-manager --disable zfs"
 		echo "dnf config-manager --enable zfs-kmod"
 		echo "dnf install -yq kernel-modules-extra-\$(uname -r) || :"
-		echo "dnf install -yq zfs nvme-cli python3"
+		echo "r dnf install -yq zfs nvme-cli python3"
 		[ -z "$ha" ] || echo "dnf config-manager --set-enabled highavailability"
-		[ -z "$ha" ] || echo "dnf install -yq pacemaker corosync resource-agents libxml2 git"
+		[ -z "$ha" ] || echo "r dnf install -yq pacemaker corosync resource-agents libxml2 git"
 		;;
 	esac
 	echo "modprobe zfs"
@@ -78,9 +80,9 @@ write_files:
     encoding: b64
     content: $(base64 < "$d/setup.sh" | tr -d '\n')
 runcmd:
-  - sh -eux /var/lib/cloud/lab-setup.sh > /var/log/lab-setup.log 2>&1
-  - zgenhostid -f 0x0000a00$n
-  - touch /var/lib/cloud/lab-ready
+  # lab-ready only when every package went in: a scenario started on a
+  # guest whose install failed fails later, on whatever it lacks.
+  - sh -eux /var/lib/cloud/lab-setup.sh > /var/log/lab-setup.log 2>&1 && zgenhostid -f 0x0000a00$n && touch /var/lib/cloud/lab-ready
 EOF
 	cat > "$d/network-config" <<EOF
 version: 2
