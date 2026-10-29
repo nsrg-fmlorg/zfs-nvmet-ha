@@ -1,0 +1,2 @@
+reboot of ctl-a successful: delegate=ctl-b, client=pacemaker-controld.16501, origin=ctl-b, last-successful='2026-10-29 15:07:40.375238Z'
+1 event found
