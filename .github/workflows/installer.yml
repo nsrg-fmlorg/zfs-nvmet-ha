@@ -1,0 +1,60 @@
+name: installer
+
+# What the AlmaLinux installer does with shared drives that carry md and
+# LVM, and which of the ways to keep it off them work.
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - 'lab/installer/**'
+      - '.github/workflows/installer.yml'
+
+concurrency:
+  group: installer-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  case:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 50
+    strategy:
+      fail-fast: false
+      matrix:
+        case: [base, auto-all, vfio-ids, override, pre-teardown]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install qemu and md/LVM tools
+        run: |
+          sudo apt-get update -q
+          sudo apt-get install -yq --no-install-recommends \
+              qemu-system-x86 qemu-utils mdadm lvm2 cpio
+          sudo chmod 666 /dev/kvm
+
+      - name: Cache the installer kernel and initrd
+        uses: actions/cache@v4
+        with:
+          path: |
+            work/installer/vmlinuz
+            work/installer/initrd.img
+          key: alma10-pxeboot-${{ github.run_id }}
+          restore-keys: alma10-pxeboot-
+
+      - name: Run the installer
+        timeout-minutes: 45
+        run: INSTALLER_CASE=${{ matrix.case }} sh lab/installer/run.sh
+
+      - name: Summary
+        if: always()
+        run: cat work/installer/summary.md >> "$GITHUB_STEP_SUMMARY" 2>/dev/null || true
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: installer-${{ matrix.case }}
+          path: |
+            work/installer/*.txt
+            work/installer/summary.md
+            work/installer/console.log
