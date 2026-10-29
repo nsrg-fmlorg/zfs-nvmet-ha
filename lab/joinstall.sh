@@ -18,7 +18,8 @@
 # recorded CIB generation older than the rejoining node's.
 #
 # PCMK_VERSION: "2.1.9" installs 2.1.9-1.el9 from the AlmaLinux 9.6 vault;
-# "latest" keeps what the HighAvailability repository has now.
+# "latest" keeps what the HighAvailability repository has now; "patched"
+# installs 2.1.9-1.el9 rebuilt with lab/patches/pacemaker-2.1.9-*.patch.
 # JFT: join-finalization-timeout for the run.  STALL: seconds after the
 # fence with no takeover that count as reproduced.
 set -eu
@@ -27,6 +28,8 @@ LAB=${LAB:-$(pwd)/work}
 HERE=$(cd "$(dirname "$0")" && pwd)
 OUT=${OUT:-$LAB/out}
 PCMK_VERSION=${PCMK_VERSION:-2.1.9}
+# PCMK_VERSION=patched installs the RPMs build-pacemaker.sh left here.
+PCMK_RPMS=${PCMK_RPMS:-$LAB/pcmk-rpms}
 JFT=${JFT:-5min}
 STALL=${STALL:-120}
 BUMPS=${BUMPS:-5}
@@ -120,6 +123,10 @@ for v in ctl-a ctl-b; do
 	put "$v" "$OUT/corosync-override.conf" /tmp/override.conf
 	put "$v" "$HERE/fence_lab" /tmp/fence_lab
 	put "$v" "$LAB/id_ed25519" /tmp/lab_key
+	if [ "$PCMK_VERSION" = patched ]; then
+		on "$v" mkdir -p /tmp/pcmk-rpms
+		for f in "$PCMK_RPMS"/*.rpm; do put "$v" "$f" /tmp/pcmk-rpms/; done
+	fi
 	on "$v" sudo sh -eu > "$OUT/$v-setup.txt" 2>&1 <<EOF || { cat "$OUT/$v-setup.txt"; exit 1; }
 r() { for i in 1 2 3 4 5; do "\$@" && return; sleep 20; done; return 1; }
 if [ "$PCMK_VERSION" = 2.1.9 ]; then
@@ -130,6 +137,15 @@ if [ "$PCMK_VERSION" = 2.1.9 ]; then
 	    --repofrompath=v96as,https://vault.almalinux.org/9.6/AppStream/x86_64/os/ \
 	    --setopt=v96ha.gpgcheck=0 --setopt=v96as.gpgcheck=0 \
 	    \$(rpm -qa --qf '%{NAME}\n' 'pacemaker*' | sed "s/\\\$/-\$v/")
+elif [ "$PCMK_VERSION" = patched ]; then
+	# The rebuilt packages for every pacemaker package installed.
+	set --
+	for n in \$(rpm -qa --qf '%{NAME}\n' 'pacemaker*'); do
+		for f in /tmp/pcmk-rpms/\$n-2.1.9-*.rpm; do
+			if [ "\$(rpm -qp --qf '%{NAME}' "\$f")" = "\$n" ]; then set -- "\$@" "\$f"; fi
+		done
+	done
+	rpm -Uvh --oldpackage "\$@"
 fi
 r dnf -y install nftables
 rpm -q pacemaker corosync nftables

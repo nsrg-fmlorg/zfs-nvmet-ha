@@ -11,6 +11,8 @@ on:
     paths:
       - 'lab/joinstall.sh'
       - 'lab/fence_lab'
+      - 'lab/build-pacemaker.sh'
+      - 'lab/patches/pacemaker-*'
       - '.github/workflows/joinstall.yml'
 
 concurrency:
@@ -25,11 +27,12 @@ permissions:
 jobs:
   joinstall:
     runs-on: ubuntu-24.04
-    timeout-minutes: 50
+    timeout-minutes: 90
     strategy:
       fail-fast: false
       matrix:
-        pcmk: ['2.1.9', 'latest']
+        # patched: 2.1.9-1.el9 rebuilt with lab/patches/pacemaker-2.1.9-*.patch
+        pcmk: ['2.1.9', 'patched']
         run: [1, 2, 3]
     steps:
       - uses: actions/checkout@v4
@@ -47,6 +50,11 @@ jobs:
           path: work/base.img
           key: alma-cloudimg-${{ github.run_id }}
           restore-keys: alma-cloudimg-
+
+      - name: Build patched pacemaker
+        if: matrix.pcmk == 'patched'
+        timeout-minutes: 40
+        run: sh lab/build-pacemaker.sh
 
       - name: Boot VMs
         run: DISTRO=alma sh lab/vms.sh up
