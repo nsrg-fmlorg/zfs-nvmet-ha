@@ -49,6 +49,10 @@ echo "make check rc=$rc" >> /out/make-check.log
 grep -h "^# \(TOTAL\|PASS\|SKIP\|XFAIL\|FAIL\|XPASS\|ERROR\)" $(find . -name test-suite.log) /dev/null >> /out/make-check.log 2>/dev/null || :
 make -s -C rpm srpm
 srpm=$(find rpm -name "pacemaker-*.src.rpm" | head -n 1)
+# The spec generates build requirements (pyproject-rpm-macros) that
+# builddep on the spec alone does not see.
+r dnf -y -q install pyproject-rpm-macros
+r dnf -y -q builddep "$srpm"
 rpmbuild --rebuild --nocheck --define "dist .main.$VARIANT" "$srpm"
 cp /root/rpmbuild/RPMS/*/*.rpm /out/
 createrepo_c -q /out
