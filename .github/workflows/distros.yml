@@ -1,0 +1,77 @@
+name: distros
+
+# The agent checks and the Pacemaker scenarios on distributions other
+# than Ubuntu, which lab.yml uses for everything.
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - 'lab/vms.sh'
+      - 'lab/agents.sh'
+      - 'lab/pacemaker.sh'
+      - 'lab/pacemaker2.sh'
+      - 'lab/node/**'
+      - 'lab/patches/**'
+      - '.github/workflows/distros.yml'
+
+concurrency:
+  group: distros-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  scenario:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        distro: [debian, alma]
+        scenario: [agents, pacemaker, pacemaker2]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install qemu
+        run: |
+          sudo apt-get update -q
+          sudo apt-get install -yq --no-install-recommends \
+              qemu-system-x86 qemu-utils cloud-image-utils
+          sudo chmod 666 /dev/kvm
+
+      - name: Cache the cloud image
+        uses: actions/cache@v4
+        with:
+          path: work/base.img
+          key: ${{ matrix.distro }}-cloudimg-${{ github.run_id }}
+          restore-keys: ${{ matrix.distro }}-cloudimg-
+
+      - name: Boot VMs
+        run: DISTRO=${{ matrix.distro }} sh lab/vms.sh up
+
+      - name: Scenario
+        timeout-minutes: 45
+        run: sh lab/${{ matrix.scenario }}.sh
+
+      - name: Guest setup logs
+        if: always()
+        run: |
+          mkdir -p work/out
+          for p in 2221 2222 2223; do
+            ssh -q -i work/id_ed25519 -p $p -o StrictHostKeyChecking=no \
+                -o UserKnownHostsFile=/dev/null -o ConnectTimeout=5 \
+                ubuntu@127.0.0.1 'cat /etc/os-release; uname -r; sudo cat /var/log/lab-setup.log' \
+                > work/out/setup-$p.log 2>&1 || :
+          done
+          for v in ctl-a ctl-b host; do cp work/$v/console.log work/out/console-$v.log 2>/dev/null || :; done
+
+      - name: Summary
+        if: always()
+        run: |
+          { echo "## ${{ matrix.distro }} / ${{ matrix.scenario }}"; cat work/out/summary.md; } >> "$GITHUB_STEP_SUMMARY" 2>/dev/null || true
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: ${{ matrix.distro }}-${{ matrix.scenario }}-logs
+          path: work/out

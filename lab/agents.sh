@@ -4,7 +4,7 @@
 # and read the resulting ANA state back from the host.
 #
 # The agents run from a checkout of the upstream commit the patch was made
-# against; ocf-shellfuncs comes from Ubuntu's resource-agents-base.
+# against; ocf-shellfuncs comes from the distribution's resource-agents.
 set -eu
 
 LAB=${LAB:-$(pwd)/work}
@@ -36,7 +36,6 @@ done
 put ctl-a "$HERE/patches/resource-agents-nvmet-ana-cntlid.diff" /home/ubuntu/ra.diff
 
 on ctl-a sudo sh -eu > "$OUT/agents.txt" 2>&1 <<EOF || { cat "$OUT/agents.txt"; exit 1; }
-apt-get install -yq resource-agents-base libxml2-utils git > /dev/null
 git clone -q --filter=blob:none https://github.com/ClusterLabs/resource-agents.git /home/ubuntu/ra
 cd /home/ubuntu/ra
 git checkout -q $RA_COMMIT

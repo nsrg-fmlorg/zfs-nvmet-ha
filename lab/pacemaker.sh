@@ -83,9 +83,12 @@ for v in ctl-a ctl-b; do
 	put "$v" "$HERE/patches/resource-agents-nvmet-ana-cntlid.diff" /tmp/ra.diff
 	put "$v" "$OUT/corosync.conf" /tmp/corosync.conf
 	on "$v" sudo sh -eu > "$OUT/$v-setup.txt" 2>&1 <<EOF || { cat "$OUT/$v-setup.txt"; exit 1; }
-ls /usr/lib/ocf/resource.d/heartbeat/ZFS
 git clone -q --filter=blob:none https://github.com/ClusterLabs/resource-agents.git /tmp/ra
 cd /tmp/ra && git checkout -q $RA_COMMIT && git apply /tmp/ra.diff
+# Not every distribution's resource-agents ships the ZFS agent; take it
+# from the same checkout where it is missing, and say which was used.
+if [ -e /usr/lib/ocf/resource.d/heartbeat/ZFS ]; then echo 'ZFS agent: distribution'
+else install -m 0755 heartbeat/ZFS /usr/lib/ocf/resource.d/heartbeat/ZFS; echo 'ZFS agent: checkout'; fi
 for a in nvmet-subsystem nvmet-namespace nvmet-port; do
 	install -m 0755 heartbeat/\$a /usr/lib/ocf/resource.d/heartbeat/\$a
 done

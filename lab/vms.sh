@@ -6,28 +6,79 @@
 # All three share an L2 segment (10.10.0.0/24) over a qemu multicast socket.
 #
 # usage: vms.sh up | down
+#
+# DISTRO picks the guests' distribution: ubuntu (24.04, the default),
+# debian (12) or alma (AlmaLinux 9, for the RHEL family).  Every guest
+# gets a user "ubuntu" whatever the distribution, so the scenarios log in
+# the same way.
 set -eu
 
 LAB=${LAB:-$(pwd)/work}
-IMG_URL=${IMG_URL:-https://cloud-images.ubuntu.com/noble/current/noble-server-cloudimg-amd64.img}
+DISTRO=${DISTRO:-ubuntu}
+case $DISTRO in
+ubuntu)	img=https://cloud-images.ubuntu.com/noble/current/noble-server-cloudimg-amd64.img;;
+# generic, not genericcloud: the cloud kernel leaves out nvmet.
+debian)	img=https://cloud.debian.org/images/cloud/bookworm/latest/debian-12-generic-amd64.qcow2;;
+alma)	img=https://repo.almalinux.org/almalinux/9/cloud/x86_64/images/AlmaLinux-9-GenericCloud-latest.x86_64.qcow2;;
+*)	echo "unknown DISTRO $DISTRO" >&2; exit 2;;
+esac
+IMG_URL=${IMG_URL:-$img}
 BASE=$LAB/base.img
 MCAST=230.0.0.1:12345
 
 mkdir -p "$LAB"
 
+# Packages per distribution.  ZFS is in Ubuntu's main archive, in
+# Debian's contrib as DKMS, and for the RHEL family in OpenZFS's own
+# kABI-tracking kmod repository.
+setup_script() {
+	ha=$1
+	case $DISTRO in
+	ubuntu)
+		echo "apt-get update -q"
+		echo "DEBIAN_FRONTEND=noninteractive apt-get install -yq zfsutils-linux nvme-cli python3 linux-modules-extra-\$(uname -r)"
+		[ -z "$ha" ] || echo "DEBIAN_FRONTEND=noninteractive apt-get install -yq pacemaker corosync resource-agents-base resource-agents-extra libxml2-utils git"
+		;;
+	debian)
+		echo "sed -i 's/^Components: main\$/Components: main contrib/' /etc/apt/sources.list.d/debian.sources"
+		echo "apt-get update -q"
+		echo "DEBIAN_FRONTEND=noninteractive apt-get install -yq linux-headers-\$(uname -r) zfs-dkms zfsutils-linux nvme-cli python3"
+		[ -z "$ha" ] || echo "DEBIAN_FRONTEND=noninteractive apt-get install -yq pacemaker corosync resource-agents libxml2-utils git"
+		;;
+	alma)
+		echo "dnf install -yq https://zfsonlinux.org/epel/zfs-release-2-3.el9.noarch.rpm"
+		echo "dnf config-manager --disable zfs"
+		echo "dnf config-manager --enable zfs-kmod"
+		echo "dnf install -yq kernel-modules-extra-\$(uname -r) || :"
+		echo "dnf install -yq zfs nvme-cli python3"
+		[ -z "$ha" ] || echo "dnf config-manager --set-enabled highavailability"
+		[ -z "$ha" ] || echo "dnf install -yq pacemaker corosync resource-agents libxml2 git"
+		;;
+	esac
+	echo "modprobe zfs"
+}
+
 vm_seed() {
-	name=$1 n=$2 extra=${3:-}
+	name=$1 n=$2 ha=${3:-}
 	d=$LAB/$name
 	mkdir -p "$d"
+	setup_script "$ha" > "$d/setup.sh"
 	cat > "$d/user-data" <<EOF
 #cloud-config
 hostname: $name
-ssh_authorized_keys:
-  - $(cat "$LAB/id_ed25519.pub")
-package_update: true
-packages: [zfsutils-linux, nvme-cli, python3$extra]
+users:
+  - default
+  - name: ubuntu
+    sudo: ALL=(ALL) NOPASSWD:ALL
+    shell: /bin/bash
+    ssh_authorized_keys:
+      - $(cat "$LAB/id_ed25519.pub")
+write_files:
+  - path: /var/lib/cloud/lab-setup.sh
+    encoding: b64
+    content: $(base64 < "$d/setup.sh" | tr -d '\n')
 runcmd:
-  - apt-get install -y linux-modules-extra-\$(uname -r)
+  - sh -eux /var/lib/cloud/lab-setup.sh > /var/log/lab-setup.log 2>&1
   - zgenhostid -f 0x0000a00$n
   - touch /var/lib/cloud/lab-ready
 EOF
@@ -97,9 +148,8 @@ up)
 		[ -f "$LAB/shared$i.raw" ] || truncate -s 4G "$LAB/shared$i.raw"
 	done
 	# The controllers also get the cluster stack and the stock agents
-	# (ocf-shellfuncs, ZFS, Delay); the host needs neither.
-	ha=', pacemaker, corosync, resource-agents-base, resource-agents-extra, libxml2-utils, git'
-	vm_seed ctl-a 1 "$ha"; vm_seed ctl-b 2 "$ha"; vm_seed host 3
+	# (ocf-shellfuncs, ZFS); the host needs neither.
+	vm_seed ctl-a 1 ha; vm_seed ctl-b 2 ha; vm_seed host 3
 	# CTL_MEM: SPDK's hugepages need more than the default 3G on ctl-a.
 	vm_start ctl-a 1 2 "${CTL_MEM:-3G}" yes
 	vm_start ctl-b 2 2 3G yes

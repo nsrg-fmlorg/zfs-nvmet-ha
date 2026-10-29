@@ -93,6 +93,10 @@ for v in ctl-a ctl-b; do
 	on "$v" sudo sh -eu > "$OUT/$v-setup.txt" 2>&1 <<EOF || { cat "$OUT/$v-setup.txt"; exit 1; }
 git clone -q --filter=blob:none https://github.com/ClusterLabs/resource-agents.git /home/ubuntu/ra
 cd /home/ubuntu/ra && git checkout -q $RA_COMMIT && git apply /home/ubuntu/ra.diff
+# Not every distribution's resource-agents ships the ZFS agent; take it
+# from the same checkout where it is missing, and say which was used.
+if [ -e /usr/lib/ocf/resource.d/heartbeat/ZFS ]; then echo 'ZFS agent: distribution'
+else install -m 0755 heartbeat/ZFS /usr/lib/ocf/resource.d/heartbeat/ZFS; echo 'ZFS agent: checkout'; fi
 for a in nvmet-subsystem nvmet-namespace nvmet-port; do
 	install -m 0755 heartbeat/\$a /usr/lib/ocf/resource.d/heartbeat/\$a
 done
