@@ -1,0 +1,43 @@
+NAME="AlmaLinux"
+VERSION="9.8 (Olive Jaguar)"
+ID="almalinux"
+ID_LIKE="rhel centos fedora"
+VERSION_ID="9.8"
+PLATFORM_ID="platform:el9"
+PRETTY_NAME="AlmaLinux 9.8 (Olive Jaguar)"
+ANSI_COLOR="0;34"
+LOGO="fedora-logo-icon"
+CPE_NAME="cpe:/o:almalinux:almalinux:9::baseos"
+HOME_URL="https://almalinux.org/"
+DOCUMENTATION_URL="https://wiki.almalinux.org/"
+BUG_REPORT_URL="https://bugs.almalinux.org/"
+
+ALMALINUX_MANTISBT_PROJECT="AlmaLinux-9"
+ALMALINUX_MANTISBT_PROJECT_VERSION="9.8"
+REDHAT_SUPPORT_PRODUCT="AlmaLinux"
+REDHAT_SUPPORT_PRODUCT_VERSION="9.8"
+SUPPORT_END=2032-06-01
+5.14.0-687.53.1.el9_8.x86_64
++ r dnf install -yq https://zfsonlinux.org/epel/zfs-release-2-3.el9.noarch.rpm
++ for i in 1 2 3 4 5
++ dnf install -yq https://zfsonlinux.org/epel/zfs-release-2-3.el9.noarch.rpm
+
+Installed:
+  zfs-release-2-3.el9.noarch                                                    
+
++ return
++ dnf config-manager --disable zfs
++ dnf config-manager --enable zfs-kmod
+++ uname -r
++ dnf install -yq kernel-modules-extra-5.14.0-687.53.1.el9_8.x86_64
+
+Installed:
+  kernel-modules-extra-5.14.0-687.53.1.el9_8.x86_64                             
+
++ r dnf install -yq zfs nvme-cli python3
++ for i in 1 2 3 4 5
++ dnf install -yq zfs nvme-cli python3
+Importing GPG key 0x9DB84141:
+ Userid     : "OpenZFS <release@openzfs.org>"
+ Fingerprint: 7DC7 299D CF7C 7FD9 CD87 701B A599 FD5E 9DB8 4141
+ From       : /etc/pki/rpm-gpg/RPM-GPG-KEY-openzfs-el-9
