@@ -1,0 +1,324 @@
+# Two controllers sharing dual-ported NVMe drives, on AlmaLinux 9:
+# ZFS pools that move between them under Pacemaker, exported through the
+# kernel NVMe-oF target (nvmet) over TCP.  MANUAL.md is the same procedure
+# by hand, step for step; each "Step N" name below is a section there.
+- name: ZFS + nvmet controllers
+  hosts: zfs_ha
+  become: true
+  vars:
+    zfs_ha_first: "{{ groups['zfs_ha'][0] }}"
+    zfs_ha_ocf: /usr/lib/ocf/resource.d/heartbeat
+    zfs_ha_ra_dir: /usr/local/src/resource-agents
+  tasks:
+    # Step 1. Repositories
+    # download.zfsonlinux.org resets https connections, and the EL10
+    # zfs-release is only there, so it comes over http and is installed
+    # only once its signature checks against OpenZFS's key, which comes
+    # over https.
+    - name: Step 1, OpenZFS's signing key
+      ansible.builtin.rpm_key:
+        key: https://raw.githubusercontent.com/zfsonlinux/zfsonlinux.github.com/master/zfs-release/RPM-GPG-KEY-openzfs-key2
+        fingerprint: 7DC7 299D CF7C 7FD9 CD87 701B A599 FD5E 9DB8 4141
+
+    - name: Step 1, fetch zfs-release
+      ansible.builtin.get_url:
+        url: "{{ zfs_ha_zfs_release }}"
+        dest: /var/tmp/zfs-release.rpm
+        mode: "0644"
+
+    - name: Step 1, its signature
+      ansible.builtin.command: rpm -K /var/tmp/zfs-release.rpm
+      register: r
+      changed_when: false
+      failed_when: "'signatures OK' not in r.stdout"
+
+    - name: Step 1, OpenZFS repository
+      ansible.builtin.dnf:
+        name: /var/tmp/zfs-release.rpm
+        disable_gpg_check: true
+        state: present
+
+    # zfs-release defines zfs, zfs-kmod, zfs-testing and zfs-testing-kmod
+    # (and older series); exactly one of the four is enabled.
+    - name: Step 1, kABI-tracking kmod or DKMS, stable or testing
+      ansible.builtin.shell: |
+        dnf config-manager --set-disabled zfs zfs-kmod zfs-testing zfs-testing-kmod
+        dnf config-manager --set-enabled {{ zfs_ha_zfs_repo }}
+      changed_when: false
+
+    - name: Step 1, EPEL and the kernel headers DKMS builds against
+      ansible.builtin.dnf:
+        name: [epel-release]
+        state: present
+      when: zfs_ha_zfs_style == 'dkms'
+
+    - name: Step 1, dkms and kernel-devel for the running kernel
+      ansible.builtin.dnf:
+        name: [dkms, "kernel-devel-{{ ansible_facts['kernel'] }}"]
+        state: present
+      when: zfs_ha_zfs_style == 'dkms'
+
+    - name: Step 1, HighAvailability repository
+      ansible.builtin.command: dnf config-manager --set-enabled highavailability
+      changed_when: false
+
+    # Step 2. Packages
+    - name: Step 2, packages
+      ansible.builtin.dnf:
+        name: [zfs, nvme-cli, pacemaker, corosync, pcs, resource-agents, git, patch]
+        state: present
+
+    # Step 3. Hostid, and no pool import at boot
+    - name: Step 3, read the hostid
+      ansible.builtin.command: hostid
+      register: zfs_ha_hostid_now
+      changed_when: false
+
+    # int(base=0) takes the value whether the inventory gave it as
+    # "0x0000a001" or as the number it stands for.
+    - name: Step 3, set the hostid
+      ansible.builtin.command: zgenhostid -f {{ '0x%08x' % (zfs_ha_hostid | string | int(base=0)) }}
+      when: (zfs_ha_hostid_now.stdout | int(base=16)) != (zfs_ha_hostid | string | int(base=0))
+
+    - name: Step 3, pools are imported by Pacemaker only, never at boot
+      ansible.builtin.systemd_service:
+        name: "{{ item }}"
+        enabled: false
+      loop: [zfs-import-cache.service, zfs-import-scan.service]
+
+    # Step 4. No automatic md assembly
+    # The installed system's udev runs "mdadm --incremental" on every
+    # device with an md superblock (mdadm's 64-md-raid-assembly.rules).  On
+    # a shared drive that both controllers see, an array assembled (and
+    # perhaps resynced) by the standby writes under the active node.
+    # AUTO -all stops automatic assembly; HOMEHOST <ignore> is what the
+    # stock file carries and is kept.  The installer assembles arrays
+    # through blivet instead, which this does not stop: see MANUAL.md,
+    # "Installing the OS without touching the shared drives".
+    - name: Step 4, no automatic md assembly
+      ansible.builtin.copy:
+        dest: /etc/mdadm.conf
+        content: |
+          # Managed by ansible/site.yml; see MANUAL.md, step 4.
+          HOMEHOST <ignore>
+          AUTO -all
+        mode: "0644"
+
+    # Step 5. Kernel modules
+    - name: Step 5, load zfs and nvmet at boot
+      ansible.builtin.copy:
+        dest: /etc/modules-load.d/zfs-nvmet-ha.conf
+        content: |
+          zfs
+          nvmet
+          nvmet-tcp
+        mode: "0644"
+
+    - name: Step 5, load them now
+      ansible.builtin.command: modprobe -a zfs nvmet nvmet-tcp
+      changed_when: false
+
+    # Step 6. Resource agents
+    - name: Step 6, the nvmet patch
+      ansible.builtin.copy:
+        src: "{{ zfs_ha_ra_patch }}"
+        dest: "{{ zfs_ha_ra_dir }}.diff"
+        mode: "0644"
+
+    - name: Step 6, resource-agents at the patched commit, with the patch applied
+      ansible.builtin.shell: |
+        set -e
+        d={{ zfs_ha_ra_dir }}
+        [ -d "$d/.git" ] || { git clone -q --filter=blob:none https://github.com/ClusterLabs/resource-agents.git "$d"; echo changed; }
+        if [ "$(git -C "$d" rev-parse HEAD)" != {{ zfs_ha_ra_commit }} ] || ! git -C "$d" apply --reverse --check "$d.diff" 2> /dev/null; then
+          git -C "$d" checkout -q -f {{ zfs_ha_ra_commit }}
+          git -C "$d" apply "$d.diff"
+          echo changed
+        fi
+      register: r
+      changed_when: "'changed' in r.stdout"
+
+    - name: Step 6, install the nvmet agents
+      ansible.builtin.copy:
+        src: "{{ zfs_ha_ra_dir }}/heartbeat/{{ item }}"
+        dest: "{{ zfs_ha_ocf }}/{{ item }}"
+        remote_src: true
+        mode: "0755"
+      loop: [nvmet-subsystem, nvmet-namespace, nvmet-port]
+
+    - name: Step 6, is the ZFS agent shipped
+      ansible.builtin.stat:
+        path: "{{ zfs_ha_ocf }}/ZFS"
+      register: zfs_ha_zfs_agent
+
+    # AlmaLinux's resource-agents leaves the ZFS agent out.
+    - name: Step 6, the ZFS agent from the same checkout
+      ansible.builtin.copy:
+        src: "{{ zfs_ha_ra_dir }}/heartbeat/ZFS"
+        dest: "{{ zfs_ha_ocf }}/ZFS"
+        remote_src: true
+        mode: "0755"
+      when: not zfs_ha_zfs_agent.stat.exists
+
+    # Step 7. Firewall
+    - name: Step 7, firewalld state
+      ansible.builtin.command: systemctl is-active firewalld
+      register: zfs_ha_fw
+      changed_when: false
+      failed_when: false
+
+    - name: Step 7, open the cluster and NVMe/TCP ports
+      ansible.builtin.command: firewall-cmd --permanent {{ item }}
+      loop: [--add-service=high-availability, --add-port=4420/tcp]
+      when: zfs_ha_fw.stdout == "active"
+      register: r
+      changed_when: "'ALREADY_ENABLED' not in r.stderr"
+
+    - name: Step 7, reload firewalld
+      ansible.builtin.command: firewall-cmd --reload
+      when: zfs_ha_fw.stdout == "active"
+      changed_when: false
+
+    # Step 8. Corosync and Pacemaker
+    - name: Step 8, corosync key on the first controller
+      ansible.builtin.command: corosync-keygen -l
+      args:
+        creates: /etc/corosync/authkey
+      when: zfs_ha_corosync_crypto | bool and inventory_hostname == zfs_ha_first
+
+    # fetch and copy, not slurp: the key is binary.
+    - name: Step 8, bring the key to the control node
+      ansible.builtin.fetch:
+        src: /etc/corosync/authkey
+        dest: "{{ playbook_dir }}/.secrets/authkey"
+        flat: true
+      when: zfs_ha_corosync_crypto | bool and inventory_hostname == zfs_ha_first
+
+    - name: Step 8, the same key on every controller
+      ansible.builtin.copy:
+        src: "{{ playbook_dir }}/.secrets/authkey"
+        dest: /etc/corosync/authkey
+        owner: root
+        mode: "0400"
+      when: zfs_ha_corosync_crypto | bool
+      register: zfs_ha_key
+
+    - name: Step 8, corosync.conf
+      ansible.builtin.template:
+        src: corosync.conf.j2
+        dest: /etc/corosync/corosync.conf
+        mode: "0644"
+      register: zfs_ha_coro
+
+    - name: Step 8, start corosync and pacemaker
+      ansible.builtin.systemd_service:
+        name: "{{ item }}"
+        enabled: true
+        state: "{{ 'restarted' if (zfs_ha_coro.changed or zfs_ha_key.changed) else 'started' }}"
+      loop: [corosync, pacemaker]
+
+    - name: Step 8, wait for both nodes online
+      ansible.builtin.shell: >-
+        crm_mon -1 | grep -q 'Online: \[ {{ groups['zfs_ha'] | join(' ') }} \]'
+      register: r
+      until: r.rc == 0
+      retries: 60
+      delay: 2
+      changed_when: false
+
+    # Step 9. Pools
+    - name: Step 9, lab only, partition blank disks
+      ansible.builtin.shell: |
+        set -e
+        sfdisk -d {{ item }} > /dev/null 2>&1 && exit 0
+        printf '{{ zfs_ha_partition_layout | replace("\n", "\\n") }}' | sfdisk -q {{ item }}
+        udevadm settle
+        echo partitioned
+      loop: "{{ zfs_ha_partition_disks }}"
+      register: r
+      changed_when: "'partitioned' in r.stdout"
+      when: zfs_ha_create_pools | bool and inventory_hostname == zfs_ha_first
+
+    - name: Step 9, re-read the partition tables on every node
+      ansible.builtin.command: blockdev --rereadpt {{ item }}
+      loop: "{{ zfs_ha_partition_disks }}"
+      changed_when: false
+      failed_when: false
+
+    - name: Step 9, which pools exist
+      ansible.builtin.shell: |
+        for p in {{ zfs_ha_pools | map(attribute='name') | join(' ') }}; do
+          zpool list -H -o name "$p" > /dev/null 2>&1 && { echo "$p"; continue; }
+          zpool import -d /dev/disk/by-id 2>/dev/null | grep -q "pool: $p\$" && echo "$p"
+        done; true
+      register: zfs_ha_pools_found
+      changed_when: false
+      when: inventory_hostname == zfs_ha_first
+
+    - name: Step 9, create the pools that do not exist, then export them
+      ansible.builtin.shell: |
+        set -e
+        zpool create -o multihost=on -o cachefile=none -O compression=lz4 {{ item.name }} {{ item.vdevs | join(' ') }}
+        zfs create -V {{ item.zvol_size }} -o volblocksize=16k {{ item.name }}/vol1
+        zpool export {{ item.name }}
+      loop: "{{ zfs_ha_pools }}"
+      when: zfs_ha_create_pools | bool and inventory_hostname == zfs_ha_first and
+            item.name not in zfs_ha_pools_found.stdout_lines
+
+    - name: Step 9, re-read the partition tables after the pools were made
+      ansible.builtin.command: blockdev --rereadpt {{ item }}
+      loop: "{{ zfs_ha_partition_disks }}"
+      changed_when: false
+      failed_when: false
+
+    # Step 10. Cluster resources
+    - name: Step 10, cluster properties
+      ansible.builtin.shell: |
+        want={{ zfs_ha_stonith_enabled | bool | lower }}
+        now=$(crm_attribute --type crm_config --name stonith-enabled --query --quiet 2>/dev/null || :)
+        [ "$now" = "$want" ] && exit 0
+        crm_attribute --type crm_config --name stonith-enabled --update "$want"
+        echo changed
+      register: r
+      changed_when: "'changed' in r.stdout"
+      run_once: true
+
+    # All at once, through a shadow copy committed in one go: created one
+    # by one, a port could start before the order constraint that puts it
+    # after its subsystem existed, find no subsystem to link, and still
+    # report success, leaving the controller without a listener.
+    - name: Step 10, resources and constraints
+      ansible.builtin.shell: |
+        set -e
+        have() { cibadmin -Q --xpath "//*[@id='$1']" > /dev/null 2>&1; }
+        missing=
+        {% for e in zfs_ha_cib %}
+        have {{ e.id }} || missing="$missing {{ e.id }}"
+        {% endfor %}
+        [ -n "$missing" ] || exit 0
+        crm_shadow --batch --force --create zfs-nvmet-ha > /dev/null
+        export CIB_shadow=zfs-nvmet-ha
+        {% for e in zfs_ha_cib %}
+        have {{ e.id }} || cibadmin --create --scope {{ e.scope }} --xml-text '{{ e.xml | replace("\n", " ") }}'
+        {% endfor %}
+        unset CIB_shadow
+        crm_shadow --batch --force --commit zfs-nvmet-ha > /dev/null
+        crm_shadow --batch --force --delete zfs-nvmet-ha > /dev/null
+        echo "created:$missing"
+      vars:
+        zfs_ha_cib: "{{ lookup('ansible.builtin.template', 'cib-elements.yml.j2') | from_yaml }}"
+      register: r
+      changed_when: "'created' in r.stdout"
+      run_once: true
+
+    # Step 11. Wait for the pools
+    - name: Step 11, wait for every pool's namespace started on its node
+      ansible.builtin.shell: >-
+        crm_mon -1 | grep -q 'ns-{{ item.name }}.*Started {{ item.prefers }}'
+      loop: "{{ zfs_ha_pools }}"
+      register: r
+      until: r.rc == 0
+      retries: 90
+      delay: 2
+      changed_when: false
+      run_once: true

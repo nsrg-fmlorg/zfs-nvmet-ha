@@ -1,0 +1,30 @@
+# Managed by ansible/site.yml.
+totem {
+	version: 2
+	cluster_name: {{ zfs_ha_cluster_name }}
+	transport: knet
+{% if zfs_ha_corosync_crypto | bool %}
+	crypto_cipher: aes256
+	crypto_hash: sha256
+{% else %}
+	crypto_cipher: none
+	crypto_hash: none
+{% endif %}
+}
+nodelist {
+{% for h in groups['zfs_ha'] %}
+	node {
+		ring0_addr: {{ hostvars[h].zfs_ha_addr }}
+		name: {{ h }}
+		nodeid: {{ hostvars[h].zfs_ha_nodeid }}
+	}
+{% endfor %}
+}
+quorum {
+	provider: corosync_votequorum
+	two_node: 1
+}
+logging {
+	to_syslog: yes
+	timestamp: on
+}

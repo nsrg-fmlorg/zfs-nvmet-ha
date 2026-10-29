@@ -1,0 +1,146 @@
+name: ansible
+
+# ansible/site.yml and ansible/MANUAL.md, each on a fresh AlmaLinux lab,
+# each followed by the same checks.
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main, ansible]
+    paths:
+      - 'ansible/**'
+      - 'lab/vms.sh'
+      - 'lab/patches/**'
+      - '.github/workflows/ansible.yml'
+
+concurrency:
+  group: ansible-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  steps:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - name: The playbook's steps and the manual's agree
+        run: python3 ansible/ci/check-steps.py ansible/site.yml ansible/MANUAL.md
+
+      - name: The playbook parses
+        working-directory: ansible
+        run: |
+          sudo apt-get install -yq --no-install-recommends ansible-core > /dev/null
+          ansible-playbook -i inventory/lab --syntax-check site.yml
+
+  build:
+    needs: steps
+    runs-on: ubuntu-24.04
+    timeout-minutes: 75
+    strategy:
+      fail-fast: false
+      matrix:
+        how: [playbook, manual]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install qemu and ansible
+        run: |
+          sudo apt-get update -q
+          sudo apt-get install -yq --no-install-recommends \
+              qemu-system-x86 qemu-utils cloud-image-utils ansible-core
+          sudo chmod 666 /dev/kvm
+          ansible --version | head -1
+
+      - name: Cache the cloud image
+        uses: actions/cache@v4
+        with:
+          path: work/base.img
+          key: alma10-cloudimg-${{ github.run_id }}
+          restore-keys: alma10-cloudimg-
+
+      - name: Boot VMs
+        run: DISTRO=alma10 sh lab/vms.sh up
+
+      - name: Reach the VMs as ctl-a, ctl-b and host
+        run: |
+          mkdir -p ~/.ssh
+          for x in ctl-a:2221 ctl-b:2222 host:2223; do
+            cat >> ~/.ssh/config <<EOF
+          Host ${x%%:*}
+            HostName 127.0.0.1
+            Port ${x#*:}
+            User ubuntu
+            IdentityFile $PWD/work/id_ed25519
+            StrictHostKeyChecking no
+            UserKnownHostsFile /dev/null
+            LogLevel ERROR
+          EOF
+          done
+          for v in ctl-a ctl-b host; do
+            n=0
+            until ssh -o ConnectTimeout=5 $v test -f /var/lib/cloud/lab-ready 2> /dev/null; do
+              n=$((n + 1)); [ $n -lt 150 ] || { echo "$v never became ready"; exit 1; }
+              sleep 10
+            done
+          done
+          ssh ctl-a 'cat /etc/os-release; uname -r; sudo grep "^zfs:" /var/log/lab-setup.log; rpm -q zfs kmod-zfs zfs-dkms pacemaker' || :
+
+      - name: Take off what the lab's cloud-init installed
+        run: sh ansible/ci/strip.sh
+
+      - name: Build with the playbook
+        if: matrix.how == 'playbook'
+        working-directory: ansible
+        run: |
+          set -o pipefail
+          ansible-playbook -i inventory/lab site.yml -e zfs_ha_create_pools=true | tee ../work/play1.txt
+
+      - name: Build by hand, from the manual's blocks
+        if: matrix.how == 'manual'
+        run: python3 ansible/ci/run-manual.py ansible/MANUAL.md
+
+      - name: Check
+        run: sh ansible/ci/check.sh
+
+      - name: What was measured
+        if: always()
+        run: |
+          for v in ctl-a ctl-b; do
+            echo "== $v"
+            ssh -o ConnectTimeout=5 $v 'cat /etc/almalinux-release; uname -r; echo "releasever $(rpm -E %rhel) / $(. /etc/os-release; echo $VERSION_ID)"
+              dnf -q repolist --enabled | grep -i zfs; rpm -q zfs kmod-zfs zfs-dkms pacemaker resource-agents corosync | grep -v "not installed"
+              sudo grep -h "import_delay" /proc/spl/kstat/zfs/dbgmsg | tail -n 4' || :
+          done | tee -a work/measured.txt
+
+      - name: The playbook a second time changes nothing
+        if: matrix.how == 'playbook'
+        working-directory: ansible
+        run: |
+          set -o pipefail
+          ansible-playbook -i inventory/lab site.yml -e zfs_ha_create_pools=true | tee ../work/play2.txt
+          grep -E '^ctl-[ab] +:' ../work/play2.txt
+          ! grep -E '^ctl-[ab] +:' ../work/play2.txt | grep -v 'changed=0'
+
+      - name: The playbook over the manual's build changes nothing either
+        if: matrix.how == 'manual'
+        working-directory: ansible
+        run: |
+          set -o pipefail
+          ansible-playbook -i inventory/lab site.yml | tee ../work/play-over-manual.txt
+          grep -E '^ctl-[ab] +:' ../work/play-over-manual.txt
+
+      - name: Logs
+        if: always()
+        run: |
+          mkdir -p work/out
+          cp work/play*.txt work/measured.txt work/out/ 2> /dev/null || :
+          for v in ctl-a ctl-b host; do
+            ssh -o ConnectTimeout=5 $v 'sudo cat /var/log/lab-setup.log; sudo journalctl -b --no-pager | tail -n 300' > work/out/$v.log 2>&1 || :
+            cp work/$v/console.log work/out/console-$v.log 2> /dev/null || :
+          done
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: ansible-${{ matrix.how }}-logs
+          path: work/out

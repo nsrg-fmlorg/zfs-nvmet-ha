@@ -1,0 +1,72 @@
+{# Every CIB element the cluster needs, one per entry, created when no
+   element with that id exists.  The same topology as lab/pacemaker2.sh:
+   per node a subsystem and a port pinned to it, per pool a group of the
+   ZFS agent and nvmet-namespace that prefers one node. #}
+{% for h in groups['zfs_ha'] %}
+{% set v = hostvars[h] %}
+- id: sub-{{ h }}
+  scope: resources
+  xml: |
+    <primitive id="sub-{{ h }}" class="ocf" provider="heartbeat" type="nvmet-subsystem">
+      <instance_attributes id="sub-{{ h }}-ia">
+        <nvpair id="sub-{{ h }}-nqn" name="nqn" value="{{ zfs_ha_nqn }}"/>
+        <nvpair id="sub-{{ h }}-serial" name="serial" value="{{ zfs_ha_serial }}"/>
+        <nvpair id="sub-{{ h }}-min" name="cntlid_min" value="{{ v.zfs_ha_cntlid_min }}"/>
+        <nvpair id="sub-{{ h }}-max" name="cntlid_max" value="{{ v.zfs_ha_cntlid_max }}"/>
+      </instance_attributes>
+      <operations><op id="sub-{{ h }}-mon" name="monitor" interval="10s"/></operations>
+    </primitive>
+- id: port-{{ h }}
+  scope: resources
+  xml: |
+    <primitive id="port-{{ h }}" class="ocf" provider="heartbeat" type="nvmet-port">
+      <instance_attributes id="port-{{ h }}-ia">
+        <nvpair id="port-{{ h }}-id" name="port_id" value="{{ v.zfs_ha_port_id }}"/>
+        <nvpair id="port-{{ h }}-addr" name="addr" value="{{ v.zfs_ha_addr }}"/>
+        <nvpair id="port-{{ h }}-nqns" name="nqns" value="{{ zfs_ha_nqn }}"/>
+      </instance_attributes>
+      <operations><op id="port-{{ h }}-mon" name="monitor" interval="10s"/></operations>
+    </primitive>
+{% for o in groups['zfs_ha'] if o != h %}
+- id: sub-{{ h }}-not-{{ o }}
+  scope: constraints
+  xml: '<rsc_location id="sub-{{ h }}-not-{{ o }}" rsc="sub-{{ h }}" node="{{ o }}" score="-INFINITY"/>'
+- id: port-{{ h }}-not-{{ o }}
+  scope: constraints
+  xml: '<rsc_location id="port-{{ h }}-not-{{ o }}" rsc="port-{{ h }}" node="{{ o }}" score="-INFINITY"/>'
+{% endfor %}
+- id: sub-{{ h }}-then-port-{{ h }}
+  scope: constraints
+  xml: '<rsc_order id="sub-{{ h }}-then-port-{{ h }}" first="sub-{{ h }}" then="port-{{ h }}"/>'
+{% endfor %}
+{% for p in zfs_ha_pools %}
+- id: grp-{{ p.name }}
+  scope: resources
+  xml: |
+    <group id="grp-{{ p.name }}">
+      <primitive id="zfs-{{ p.name }}" class="ocf" provider="heartbeat" type="ZFS">
+        <instance_attributes id="zfs-{{ p.name }}-ia">
+          <nvpair id="zfs-{{ p.name }}-pool" name="pool" value="{{ p.name }}"/>
+          <nvpair id="zfs-{{ p.name }}-args" name="importargs" value="-d /dev/disk/by-id"/>
+        </instance_attributes>
+        <operations>
+          <op id="zfs-{{ p.name }}-start" name="start" interval="0s" timeout="120s"/>
+          <op id="zfs-{{ p.name }}-stop" name="stop" interval="0s" timeout="60s"/>
+          <op id="zfs-{{ p.name }}-mon" name="monitor" interval="5s" timeout="30s"/>
+        </operations>
+      </primitive>
+      <primitive id="ns-{{ p.name }}" class="ocf" provider="heartbeat" type="nvmet-namespace">
+        <instance_attributes id="ns-{{ p.name }}-ia">
+          <nvpair id="ns-{{ p.name }}-nqn" name="nqn" value="{{ zfs_ha_nqn }}"/>
+          <nvpair id="ns-{{ p.name }}-nsid" name="namespace_id" value="{{ p.nsid }}"/>
+          <nvpair id="ns-{{ p.name }}-path" name="backing_path" value="/dev/zvol/{{ p.name }}/vol1"/>
+          <nvpair id="ns-{{ p.name }}-uuid" name="uuid" value="{{ p.uuid }}"/>
+          <nvpair id="ns-{{ p.name }}-nguid" name="nguid" value="{{ p.uuid }}"/>
+        </instance_attributes>
+        <operations><op id="ns-{{ p.name }}-mon" name="monitor" interval="10s"/></operations>
+      </primitive>
+    </group>
+- id: {{ p.name }}-prefers-{{ p.prefers }}
+  scope: constraints
+  xml: '<rsc_location id="{{ p.name }}-prefers-{{ p.prefers }}" rsc="grp-{{ p.name }}" node="{{ p.prefers }}" score="100"/>'
+{% endfor %}
