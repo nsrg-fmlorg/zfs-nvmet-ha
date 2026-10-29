@@ -131,7 +131,8 @@ if [ "$PCMK_VERSION" = 2.1.9 ]; then
 	    --setopt=v96ha.gpgcheck=0 --setopt=v96as.gpgcheck=0 \
 	    \$(rpm -qa --qf '%{NAME}\n' 'pacemaker*' | sed "s/\\\$/-\$v/")
 fi
-rpm -q pacemaker corosync
+r dnf -y install nftables
+rpm -q pacemaker corosync nftables
 install -m 0644 /tmp/corosync.conf /etc/corosync/corosync.conf
 install -d /etc/systemd/system/corosync.service.d
 install -m 0644 /tmp/override.conf /etc/systemd/system/corosync.service.d/override.conf
