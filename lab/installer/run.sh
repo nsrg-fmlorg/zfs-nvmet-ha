@@ -50,16 +50,21 @@ sudo mdadm --stop /dev/md/labshared
 sudo losetup -d "$l0" "$l1"
 sha256sum shared0.raw shared1.raw > sum-before.txt
 
-# Extra initrd: the kickstart, and per case the hook or the updates.
-rm -rf extra && mkdir -p extra
-sed -e "s/@S0@/$S0/g" -e "s/@S1@/$S1/g" -e "s/@CASE@/$CASE/g" "$HERE/ks.cfg" > extra/ks.cfg
-args="inst.repo=$OS inst.ks=file:/ks.cfg inst.text console=ttyS0"
+# The kickstart and updates come over HTTP from the runner (10.0.2.2 from
+# the guest); only the override case adds to the initrd, for its hook.
+rm -rf srv extra && mkdir -p srv extra
+sed -e "s/@S0@/$S0/g" -e "s/@S1@/$S1/g" -e "s/@CASE@/$CASE/g" "$HERE/ks.cfg" > srv/ks.cfg
+args="inst.repo=$OS inst.ks=http://10.0.2.2:8000/ks.cfg inst.text console=ttyS0"
 boot="-device nvme,serial=boot,drive=boot,addr=0x4"
+cp initrd.img initrd.case
 case $CASE in
 base|pre-teardown) ;;
 auto-all)
-	mkdir -p extra/updates/etc
-	printf 'HOMEHOST <ignore>\nAUTO -all\n' > extra/updates/etc/mdadm.conf;;
+	mkdir -p upd/etc
+	printf 'HOMEHOST <ignore>\nAUTO -all\n' > upd/etc/mdadm.conf
+	(cd upd && find . -mindepth 1 | cpio -o -H newc -R 0:0 --quiet | gzip) > srv/updates.img
+	rm -rf upd
+	args="$args inst.updates=http://10.0.2.2:8000/updates.img";;
 vfio-ids)
 	# qemu's NVMe controller is 1b36:0010.
 	args="$args vfio-pci.ids=1b36:0010 rd.driver.pre=vfio-pci"
@@ -70,11 +75,16 @@ override)
 		mkdir -p "extra/$d"
 		printf 'for b in %s %s; do echo none > /sys/bus/pci/devices/$b/driver_override; done\n' \
 		    "$S0" "$S1" > "extra/$d/00-shared-override.sh"
-	done;;
+	done
+	# No entry for the root directory itself, and owned by root: the
+	# archive is laid over the initrd's own.
+	(cd extra && find . -mindepth 1 | cpio -o -H newc -R 0:0 --quiet | gzip) > extra.cpio.gz
+	cat initrd.img extra.cpio.gz > initrd.case;;
 *)	echo "unknown INSTALLER_CASE $CASE" >&2; exit 2;;
 esac
-(cd extra && find . | cpio -o -H newc --quiet | gzip) > extra.cpio.gz
-cat initrd.img extra.cpio.gz > initrd.case
+(cd srv && exec python3 -m http.server 8000 > ../http.log 2>&1) &
+http=$!
+trap 'kill $http 2>/dev/null || :' EXIT
 
 rm -f console.log
 # shellcheck disable=SC2086
@@ -110,3 +120,5 @@ seen() { grep -c 'shared[01]' "$1" 2>/dev/null || :; }
 	fi
 	grep -q '^=== pre-install$' console.log || echo "- the installer never reached %pre-install"
 } | tee summary.md
+# Without the %pre record nothing was measured.
+grep -q '^=== pre$' console.log || { echo "no %pre record; see console.log" >&2; tr -d '\r' < console.log | tail -n 40 >&2; exit 1; }

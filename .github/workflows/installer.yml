@@ -58,3 +58,4 @@ jobs:
             work/installer/*.txt
             work/installer/summary.md
             work/installer/console.log
+            work/installer/http.log
