@@ -1,0 +1,71 @@
+NAME="AlmaLinux"
+VERSION="10.2 (Lavender Lion)"
+RELEASE_TYPE=stable
+ID="almalinux"
+ID_LIKE="rhel centos fedora"
+VERSION_ID="10.2"
+PLATFORM_ID="platform:el10"
+PRETTY_NAME="AlmaLinux 10.2 (Lavender Lion)"
+ANSI_COLOR="0;34"
+LOGO="fedora-logo-icon"
+CPE_NAME="cpe:/o:almalinux:almalinux:10.2"
+HOME_URL="https://almalinux.org/"
+DOCUMENTATION_URL="https://wiki.almalinux.org/"
+VENDOR_NAME="AlmaLinux"
+VENDOR_URL="https://almalinux.org/"
+BUG_REPORT_URL="https://bugs.almalinux.org/"
+
+ALMALINUX_MANTISBT_PROJECT="AlmaLinux-10"
+ALMALINUX_MANTISBT_PROJECT_VERSION="10.2"
+REDHAT_SUPPORT_PRODUCT="AlmaLinux"
+REDHAT_SUPPORT_PRODUCT_VERSION="10.2"
+SUPPORT_END=2035-06-01
+6.12.0-211.64.1.el10_2.x86_64
++ r dnf install -yq https://zfsonlinux.org/epel/zfs-release-3-0.el10.noarch.rpm
++ for i in 1 2 3 4 5
++ dnf install -yq https://zfsonlinux.org/epel/zfs-release-3-0.el10.noarch.rpm
+
+Installed:
+  zfs-release-3-0.el10.noarch                                                   
+
++ return
++ dnf config-manager --disable zfs
++ dnf config-manager --enable zfs-kmod
+++ uname -r
++ dnf install -yq kernel-modules-extra-6.12.0-211.64.1.el10_2.x86_64
+
+Installed:
+  kernel-modules-extra-6.12.0-211.64.1.el10_2.x86_64                            
+
++ r dnf install -yq zfs
++ for i in 1 2 3 4 5
++ dnf install -yq zfs
+Importing GPG key 0x9DB84141:
+ Userid     : "OpenZFS <release@openzfs.org>"
+ Fingerprint: 7DC7 299D CF7C 7FD9 CD87 701B A599 FD5E 9DB8 4141
+ From       : /etc/pki/rpm-gpg/RPM-GPG-KEY-openzfs-el-10
+
+Installed:
+  avahi-libs-0.9~rc2-2.el10.x86_64     kmod-zfs-2.2.11-1.el10.x86_64           
+  libnvpair3-2.2.11-1.el10.x86_64      libuutil3-2.2.11-1.el10.x86_64          
+  libuv-1:1.52.1-1.el10_2.x86_64       libzfs5-2.2.11-1.el10.x86_64            
+  libzpool5-2.2.11-1.el10.x86_64       lm_sensors-libs-3.6.0-20.el10.x86_64    
+  pcp-conf-7.0.3-5.el10_2.x86_64       pcp-libs-7.0.3-5.el10_2.x86_64          
+  sysstat-12.7.6-4.el10.x86_64         zfs-2.2.11-1.el10.x86_64                
+
++ return
++ modprobe zfs
++ echo 'zfs: kmod'
+zfs: kmod
++ r dnf install -yq nvme-cli python3
++ for i in 1 2 3 4 5
++ dnf install -yq nvme-cli python3
+
+Installed:
+  nvme-cli-2.16-2.el10.x86_64                                                   
+
++ return
++ dnf config-manager --set-enabled highavailability
++ r dnf install -yq pacemaker corosync resource-agents libxml2 git
++ for i in 1 2 3 4 5
++ dnf install -yq pacemaker corosync resource-agents libxml2 git
