@@ -35,7 +35,17 @@ FENCE_DELAY=${FENCE_DELAY:-40}
 # DC saw the node leave at the kill and rejoin 6 s later; in the lab a 1 s
 # restart lands inside corosync's token timeout, the DC sees the leave and
 # the rejoin in one membership change, and nothing is fenced.
-RESTART_SEC=${RESTART_SEC:-6}
+RESTART_SEC=${RESTART_SEC:-1}
+# PARTITION_SEC: drop corosync traffic between the controllers from the
+# kill until this long after the restart.  The restarted pacemaker then
+# starts, and its controller announces itself, before the DC can see the
+# node; when the partition heals the DC takes the node in through the
+# "unknown node joined" path only, with no announce to answer, as in the
+# field (the node answered the DC's offer in 208 ms, its announce long
+# gone).  Without it, a VM's controller is still in the announce's sleep
+# when the offer arrives, announces first, and the DC offers itself
+# again, which puts max_generation_from back on the DC.  0 turns it off.
+PARTITION_SEC=${PARTITION_SEC:-8}
 mkdir -p "$OUT"
 
 port() { case $1 in ctl-a) echo 2221;; ctl-b) echo 2222;; host) echo 2223;; esac; }
@@ -201,7 +211,20 @@ on ctl-b sudo crm_mon -1 | tee "$OUT/crm-before.txt"
 log "kill corosync on ctl-a"
 on ctl-b sudo logger -t lab "=== kill corosync on ctl-a ==="
 t_kill=$(now)
+if [ "$PARTITION_SEC" -gt 0 ]; then
+	on ctl-a sudo sh -eu <<'NFT'
+nft add table inet lab
+nft add chain inet lab in '{ type filter hook input priority 0; }'
+nft add chain inet lab out '{ type filter hook output priority 0; }'
+nft add rule inet lab in ip saddr 10.10.0.12 udp dport 5404-5406 drop
+nft add rule inet lab out ip daddr 10.10.0.12 udp dport 5404-5406 drop
+NFT
+fi
 on ctl-a sudo pkill -KILL -x corosync || :
+if [ "$PARTITION_SEC" -gt 0 ]; then
+	( sleep $((RESTART_SEC + PARTITION_SEC)); on ctl-a sudo nft delete table inet lab
+	  on ctl-b sudo logger -t lab "=== partition healed ===" ) &
+fi
 
 # Poll the DC: its controller state, where svc runs, the fence history.
 : > "$OUT/timeline.txt"
@@ -226,7 +249,7 @@ on ctl-b sudo stonith_admin --history ctl-a > "$OUT/fence-history.txt" 2>&1 || :
 on ctl-b sudo journalctl -o short-precise --since "-20min" -u corosync -u pacemaker -t fence_lab -t lab \
     > "$OUT/ctl-b-journal.txt" 2>&1 || :
 on ctl-b sudo cat /var/log/pacemaker/pacemaker.log > "$OUT/ctl-b-pacemaker.log" 2>&1 || :
-grep -E 'Accepting join-[0-9]+ request|Delaying (join-[0-9]+ )?finalization|Finalization not needed|Finalizing join|join-[0-9]+: (Complete|Still waiting)|State transition|Finalization Timer|I_ELECTION' \
+grep -E 'Sending join-[0-9]+ offer|Making join-[0-9]+ offers|Accepting join-[0-9]+ request|Delaying (join-[0-9]+ )?finalization|Finalization not needed|Finalizing join|join-[0-9]+: (Complete|Still waiting)|State transition|Finalization Timer|I_ELECTION' \
     "$OUT/ctl-b-pacemaker.log" | awk -v since="$(date -d "@$t_kill" '+%b %d %T')" '$0 >= since' \
     > "$OUT/join-trace.txt" || :
 
@@ -242,7 +265,7 @@ fi
 	echo "### Join stall after corosync kill ($PCMK_RPM)"
 	echo
 	echo "- verdict: **$verdict**"
-	echo "- DC: $DC; join-finalization-timeout $JFT; fence delay ${FENCE_DELAY}s; RestartSec ${RESTART_SEC}s; $BUMPS config changes before the kill"
+	echo "- DC: $DC; join-finalization-timeout $JFT; fence delay ${FENCE_DELAY}s; RestartSec ${RESTART_SEC}s; partition ${PARTITION_SEC}s after the restart; $BUMPS config changes before the kill"
 	echo "- fence done at +${t_fenced:-?}s, svc started on ctl-b at +${t_up:-never}s after the kill"
 	echo "- DC seen in S_FINALIZE_JOIN: ${saw_finalize:-no}"
 	echo "- CIB before the kill: b \`$( grep -o ' \(admin_epoch\|epoch\|num_updates\)="[0-9]*"' "$OUT/cib-version-b.txt" | tr '\n' ' ')\`, a \`$( grep -o ' \(admin_epoch\|epoch\|num_updates\)="[0-9]*"' "$OUT/cib-version-a.txt" | tr '\n' ' ')\`"
@@ -250,6 +273,6 @@ fi
 	echo "Join decisions on the DC (debug log):"
 	echo
 	echo '```'
-	grep -E 'Accepting join|Delaying|not needed|Finalizing join|join-[0-9]+: ' "$OUT/join-trace.txt" | cut -c1-220 | head -n 40
+	grep -E 'Sending join-[0-9]+ offer|Making join-[0-9]+ offers|Accepting join|Delaying|not needed|Finalizing join|join-[0-9]+: ' "$OUT/join-trace.txt" | awk '!/Delaying/ || ++d <= 2' | cut -c1-220 | head -n 40
 	echo '```'
 } | tee "$OUT/summary.md"
