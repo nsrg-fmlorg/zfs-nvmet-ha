@@ -151,7 +151,11 @@ fi
 t1=\$(now)
 zpool status tankA
 udevadm settle
-for i in \$(seq 30); do [ -e /dev/zvol/tankA/vol1 ] && break; sleep 1; done
+# After an import that discarded the ZIL the device node has come up to
+# a minute and more late; exporting a missing device fails with EIO and
+# leaves the host waiting on a namespace that never comes.
+for i in \$(seq 180); do [ -e /dev/zvol/tankA/vol1 ] && break; sleep 1; done
+[ -e /dev/zvol/tankA/vol1 ] || { echo "zvol never appeared"; exit 1; }
 sh /home/ubuntu/nvmet.sh ns /dev/zvol/tankA/vol1
 sh /home/ubuntu/nvmet.sh ana 2 optimized
 echo "import: \$how"
