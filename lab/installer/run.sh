@@ -46,6 +46,9 @@ sudo pvcreate -q /dev/md/labshared
 sudo vgcreate -q vgshared /dev/md/labshared
 sudo lvcreate -q -L 200M -n data vgshared
 sudo vgchange -q -an vgshared
+# What the other node left, to compare with what the guest reads.
+sudo mdadm --examine "$l0" > examine-runner.txt 2>&1 || :
+sudo dd if="$l0" bs=4096 skip=1 count=1 status=none | od -A d -t x1 | head -n 16 > sb-runner.txt
 sudo mdadm --stop /dev/md/labshared
 sudo losetup -d "$l0" "$l1"
 sha256sum shared0.raw shared1.raw > sum-before.txt
@@ -99,7 +102,9 @@ timeout 2400 qemu-system-x86_64 -machine q35,accel=kvm -cpu host -smp 2 -m 4096 
 sha256sum shared0.raw shared1.raw > sum-after.txt
 
 # Sections the kickstart wrote between "=== <name>" and "=== end <name>".
-sec() { awk -v n="$1" '$0 ~ "^=== end " n { p = 0 } p { print } $0 ~ "^=== " n "$" { p = 1 }' console.log | tr -d '\r'; }
+# The installer's screen writes escape sequences around the records.
+tr -d '\r' < console.log | sed 's/\x1b\[[0-9;?]*[a-zA-Z]//g; s/\x1b(B//g' > clean.log
+sec() { awk -v n="$1" '$0 ~ "=== end " n "$" { p = 0 } p { print } $0 ~ "=== " n "$" { p = 1 }' clean.log; }
 for s in pre pre-after-teardown pre-install; do sec "$s" > "$s.txt"; done
 md() { grep -c '^md' "$1" 2>/dev/null || :; }
 lv() { grep -c 'vgshared' "$1" 2>/dev/null || :; }
@@ -118,7 +123,7 @@ seen() { grep -c 'shared[01]' "$1" 2>/dev/null || :; }
 	else
 		echo "- **shared drives were written to**"
 	fi
-	grep -q '^=== pre-install$' console.log || echo "- the installer never reached %pre-install"
+	grep -q '=== pre-install$' clean.log || echo "- the installer never reached %pre-install"
 } | tee summary.md
 # Without the %pre record nothing was measured.
-grep -q '^=== pre$' console.log || { echo "no %pre record; see console.log" >&2; tr -d '\r' < console.log | tail -n 40 >&2; exit 1; }
+grep -q '=== pre$' clean.log || { echo "no %pre record; see console.log" >&2; tr -d '\r' < console.log | tail -n 40 >&2; exit 1; }

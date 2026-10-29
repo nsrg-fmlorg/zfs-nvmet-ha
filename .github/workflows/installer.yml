@@ -59,3 +59,4 @@ jobs:
             work/installer/summary.md
             work/installer/console.log
             work/installer/http.log
+            work/installer/clean.log
