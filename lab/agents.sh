@@ -66,7 +66,24 @@ EOF
 	done;;
 fc)
 	on ctl-a sudo sh -eux >> "$OUT/transport.txt" 2>&1 <<EOF || { cat "$OUT/transport.txt"; exit 1; }
-modprobe nvmet-fc; modprobe nvme-fc; modprobe nvme-fcloop
+modprobe nvmet-fc; modprobe nvme-fc
+# Ubuntu and Debian build their kernels without fcloop (CONFIG_NVME_TARGET_
+# FCLOOP is not set); build it from the source of the running kernel.
+if ! modprobe nvme-fcloop 2>/dev/null; then
+	sig=\$(cut -d' ' -f2 /proc/version_signature)	# 6.8.0-147.147-generic
+	tag=Ubuntu-\${sig%-generic}
+	B=https://git.launchpad.net/~ubuntu-kernel/ubuntu/+source/linux/+git/noble/plain
+	DEBIAN_FRONTEND=noninteractive apt-get install -yq gcc make linux-headers-\$(uname -r) > /dev/null
+	W=/home/ubuntu/fcloop
+	mkdir -p \$W/target \$W/host
+	for f in target/fcloop.c target/nvmet.h host/nvme.h; do
+		curl -fsSL -o \$W/\$f "\$B/drivers/nvme/\$f?h=\$tag"
+	done
+	echo 'obj-m := nvme-fcloop.o' > \$W/target/Kbuild
+	echo 'nvme-fcloop-y := fcloop.o' >> \$W/target/Kbuild
+	make -s -C /lib/modules/\$(uname -r)/build M=\$W/target modules
+	insmod \$W/target/nvme-fcloop.ko
+fi
 F=/sys/class/fcloop/ctl
 echo "wwnn=$TWN,wwpn=$TWP" > \$F/add_target_port
 echo "wwnn=$HWN,wwpn=$HWP" > \$F/add_local_port
