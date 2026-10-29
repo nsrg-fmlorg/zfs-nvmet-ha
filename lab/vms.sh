@@ -8,7 +8,7 @@
 # usage: vms.sh up | down
 #
 # DISTRO picks the guests' distribution: ubuntu (24.04, the default),
-# debian (12) or alma (AlmaLinux 9, for the RHEL family).  Every guest
+# debian (12), alma (AlmaLinux 9, for the RHEL family) or alma10.  Every guest
 # gets a user "ubuntu" whatever the distribution, so the scenarios log in
 # the same way.
 set -eu
@@ -20,6 +20,7 @@ ubuntu)	img=https://cloud-images.ubuntu.com/noble/current/noble-server-cloudimg-
 # generic, not genericcloud: the cloud kernel leaves out nvmet.
 debian)	img=https://cloud.debian.org/images/cloud/bookworm/latest/debian-12-generic-amd64.qcow2;;
 alma)	img=https://repo.almalinux.org/almalinux/9/cloud/x86_64/images/AlmaLinux-9-GenericCloud-latest.x86_64.qcow2;;
+alma10)	img=https://repo.almalinux.org/almalinux/10/cloud/x86_64/images/AlmaLinux-10-GenericCloud-latest.x86_64.qcow2;;
 *)	echo "unknown DISTRO $DISTRO" >&2; exit 2;;
 esac
 IMG_URL=${IMG_URL:-$img}
@@ -53,6 +54,23 @@ setup_script() {
 		echo "dnf config-manager --enable zfs-kmod"
 		echo "dnf install -yq kernel-modules-extra-\$(uname -r) || :"
 		echo "r dnf install -yq zfs nvme-cli python3"
+		[ -z "$ha" ] || echo "dnf config-manager --set-enabled highavailability"
+		[ -z "$ha" ] || echo "r dnf install -yq pacemaker corosync resource-agents libxml2 git"
+		;;
+	alma10)
+		# OpenZFS documents zfs-release-3-0 for EL 8-10.  Prefer the kmod;
+		# where it does not load for this kernel, build with DKMS instead.
+		echo "r dnf install -yq https://zfsonlinux.org/epel/zfs-release-3-0.el10.noarch.rpm"
+		echo "dnf config-manager --disable zfs"
+		echo "dnf config-manager --enable zfs-kmod"
+		echo "dnf install -yq kernel-modules-extra-\$(uname -r) || :"
+		echo "if r dnf install -yq zfs && modprobe zfs; then echo 'zfs: kmod'; else"
+		echo "  dnf remove -yq kmod-zfs zfs || :"
+		echo "  dnf config-manager --disable zfs-kmod; dnf config-manager --enable zfs"
+		echo "  r dnf install -yq epel-release; r dnf install -yq kernel-devel-\$(uname -r) dkms; r dnf install -yq zfs"
+		echo "  echo 'zfs: dkms'"
+		echo "fi"
+		echo "r dnf install -yq nvme-cli python3"
 		[ -z "$ha" ] || echo "dnf config-manager --set-enabled highavailability"
 		[ -z "$ha" ] || echo "r dnf install -yq pacemaker corosync resource-agents libxml2 git"
 		;;
