@@ -1,0 +1,1 @@
+<cib crm_feature_set="3.20.1" validate-with="pacemaker-4.0" epoch="15" num_updates="0" admin_epoch="0" cib-last-written="Thu Oct 29 17:46:56 2026" update-origin="ctl-b" update-client="root" update-user="root" have-quorum="1" dc-uuid="2">
