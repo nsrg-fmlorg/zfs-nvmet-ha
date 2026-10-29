@@ -17,6 +17,11 @@ concurrency:
   group: joinstall-${{ github.ref }}
   cancel-in-progress: true
 
+# The results also go to a branch of their own, joinstall-results/RUN-PCMK-N,
+# and the summary to an annotation, for readers who cannot fetch artifacts.
+permissions:
+  contents: write
+
 jobs:
   joinstall:
     runs-on: ubuntu-24.04
@@ -48,7 +53,10 @@ jobs:
 
       - name: Scenario
         timeout-minutes: 35
-        run: PCMK_VERSION=${{ matrix.pcmk }} sh lab/joinstall.sh
+        run: |
+          set -o pipefail
+          mkdir -p work/out
+          PCMK_VERSION=${{ matrix.pcmk }} sh lab/joinstall.sh 2>&1 | tee work/out/scenario.txt
 
       - name: Guest setup logs
         if: always()
@@ -72,3 +80,24 @@ jobs:
         with:
           name: joinstall-${{ matrix.pcmk }}-${{ matrix.run }}-logs
           path: work/out
+
+      - name: Publish results
+        if: always()
+        env:
+          BR: joinstall-results/${{ github.run_id }}-${{ matrix.pcmk }}-${{ matrix.run }}
+          TOKEN: ${{ github.token }}
+        run: |
+          f=work/out/summary.md
+          [ -f "$f" ] || { echo "no summary"; tail -n 40 work/out/scenario.txt > "$f" 2>/dev/null || :; }
+          echo "::notice title=joinstall ${{ matrix.pcmk }} run ${{ matrix.run }}::$(sed ':a;N;$!ba;s/%/%25/g;s/\r/%0D/g;s/\n/%0A/g' "$f")"
+          r=$(mktemp -d)
+          for x in work/out/*.txt work/out/*.md work/out/*.log; do
+            [ -f "$x" ] || continue
+            # The controller's debug log can be large; the tail holds the event.
+            tail -c 8000000 "$x" > "$r/$(basename "$x")"
+          done
+          cd "$r"
+          git init -q -b "$BR"
+          git add .
+          git -c user.name=ci -c user.email=ci@localhost commit -qm "joinstall results ${{ github.run_id }} ${{ matrix.pcmk }} ${{ matrix.run }}"
+          git push -q "https://x-access-token:$TOKEN@github.com/${{ github.repository }}" "$BR"
