@@ -23,6 +23,7 @@ jobs:
       fail-fast: false
       matrix:
         case: [base, auto-all, vfio-ids, override, pre-teardown]
+        release: ['9', '10']
     steps:
       - uses: actions/checkout@v4
 
@@ -39,12 +40,15 @@ jobs:
           path: |
             work/installer/vmlinuz
             work/installer/initrd.img
-          key: alma10-pxeboot-${{ github.run_id }}
-          restore-keys: alma10-pxeboot-
+          key: alma${{ matrix.release }}-pxeboot-${{ github.run_id }}
+          restore-keys: alma${{ matrix.release }}-pxeboot-
 
       - name: Run the installer
         timeout-minutes: 45
-        run: INSTALLER_CASE=${{ matrix.case }} sh lab/installer/run.sh
+        run: |
+          INSTALLER_CASE=${{ matrix.case }} \
+          OS_URL=https://repo.almalinux.org/almalinux/${{ matrix.release }}/BaseOS/x86_64/os \
+              sh lab/installer/run.sh
 
       - name: Summary
         if: always()
@@ -53,7 +57,7 @@ jobs:
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: installer-${{ matrix.case }}
+          name: installer-${{ matrix.release }}-${{ matrix.case }}
           path: |
             work/installer/*.txt
             work/installer/summary.md
