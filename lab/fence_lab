@@ -1,0 +1,75 @@
+#!/bin/sh
+# A fence agent for the lab: reset the target VM over the lab network
+# with sysrq, after a delay standing in for the time an IPMI power cycle
+# takes.  The ssh key is the lab's own, copied in by joinstall.sh.
+#
+# Arguments come as key=value lines on stdin (or -o ACTION / --action=ACTION
+# for a manual run).
+action= plug= delay=${FENCE_LAB_DELAY:-40}
+while IFS='=' read -r k v; do
+	case $k in
+	action|option) action=$v;;
+	port|plug|nodename) plug=$v;;
+	delay) delay=$v;;
+	esac
+done <<EOF
+$( [ -t 0 ] || cat )
+EOF
+case ${1:-} in -o) action=$2;; --action=*) action=${1#--action=};; esac
+
+ip_of() { case $1 in ctl-a) echo 10.10.0.11;; ctl-b) echo 10.10.0.12;; *) return 1;; esac; }
+
+case $action in
+metadata)
+	cat <<'EOF'
+<?xml version="1.0" ?>
+<resource-agent name="fence_lab" shortdesc="Lab fence agent: sysrq reset over ssh">
+<longdesc>Resets a lab VM with sysrq over ssh after a delay.</longdesc>
+<parameters>
+	<parameter name="action" unique="0" required="1">
+		<getopt mixed="-o, --action=[action]"/>
+		<content type="string" default="reboot"/>
+		<shortdesc lang="en">Fencing action</shortdesc>
+	</parameter>
+	<parameter name="plug" unique="0" required="0">
+		<getopt mixed="-n, --plug=[id]"/>
+		<content type="string"/>
+		<shortdesc lang="en">Node to fence</shortdesc>
+	</parameter>
+	<parameter name="delay" unique="0" required="0">
+		<getopt mixed="--delay=[seconds]"/>
+		<content type="second" default="40"/>
+		<shortdesc lang="en">Seconds to wait before the reset</shortdesc>
+	</parameter>
+</parameters>
+<actions>
+	<action name="on" automatic="0"/>
+	<action name="off"/>
+	<action name="reboot"/>
+	<action name="status"/>
+	<action name="list"/>
+	<action name="list-status"/>
+	<action name="monitor"/>
+	<action name="metadata"/>
+</actions>
+</resource-agent>
+EOF
+	;;
+monitor|on) exit 0;;
+list|list-status) echo "ctl-a"; echo "ctl-b";;
+status)
+	ip=$(ip_of "$plug") || exit 1
+	timeout 5 ssh -q -i /root/.ssh/lab_key -o StrictHostKeyChecking=no \
+	    -o UserKnownHostsFile=/dev/null -o ConnectTimeout=3 ubuntu@"$ip" true \
+	    && exit 0 || exit 2;;
+reboot|off)
+	ip=$(ip_of "$plug") || exit 1
+	logger -t fence_lab "$action $plug ($ip) in ${delay}s"
+	sleep "$delay"
+	timeout 10 ssh -q -i /root/.ssh/lab_key -o StrictHostKeyChecking=no \
+	    -o UserKnownHostsFile=/dev/null -o ConnectTimeout=3 ubuntu@"$ip" \
+	    'sudo sh -c "echo 1 > /proc/sys/kernel/sysrq; echo b > /proc/sysrq-trigger"' || :
+	logger -t fence_lab "$action $plug done"
+	exit 0;;
+*) echo "fence_lab: unknown action '$action'" >&2; exit 1;;
+esac

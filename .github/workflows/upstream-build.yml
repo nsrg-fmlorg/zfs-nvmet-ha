@@ -1,0 +1,51 @@
+name: upstream-build
+
+# Build a Pacemaker branch (by default the join finalization fix on
+# zakinko/pacemaker) on AlmaLinux 9 and 10 and Fedora, and run its unit
+# tests, before it goes to ClusterLabs as a pull request.
+
+on:
+  workflow_dispatch:
+    inputs:
+      repo:
+        default: zakinko/pacemaker
+      ref:
+        default: fix-join-offer-self
+  push:
+    paths:
+      - '.github/workflows/upstream-build.yml'
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        image: ['almalinux:9', 'almalinux:10', 'fedora:latest']
+    container: docker.io/library/${{ matrix.image }}
+    steps:
+      - name: Build dependencies
+        run: |
+          dnf -y install dnf-plugins-core git
+          case "${{ matrix.image }}" in
+          almalinux*) dnf config-manager --set-enabled crb highavailability ;;
+          esac
+          dnf -y install gcc make automake autoconf libtool libtool-ltdl-devel \
+              pkgconfig gettext-devel glib2-devel libxml2-devel libxslt-devel \
+              libuuid-devel bzip2-devel gnutls-devel pam-devel dbus-devel \
+              ncurses-devel libqb-devel corosynclib-devel libcmocka-devel \
+              python3 python3-devel
+      - uses: actions/checkout@v4
+        with:
+          repository: ${{ inputs.repo || 'zakinko/pacemaker' }}
+          ref: ${{ inputs.ref || 'fix-join-offer-self' }}
+      - name: Build
+        run: |
+          git config --global --add safe.directory "$PWD"
+          git log --oneline -2
+          ./autogen.sh
+          ./configure
+          make -j"$(nproc)"
+      - name: Unit tests
+        run: make -j"$(nproc)" check
