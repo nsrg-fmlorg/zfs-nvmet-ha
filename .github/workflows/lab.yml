@@ -8,6 +8,10 @@ on:
       - 'lab/**'
       - '!lab/installer/**'
       - '!lab/agents.sh'
+      - '!lab/joinstall.sh'
+      - '!lab/build-pacemaker.sh'
+      - '!lab/fence_lab'
+      - '!lab/patches/pacemaker-*'
       - '.github/workflows/lab.yml'
 
 concurrency:
