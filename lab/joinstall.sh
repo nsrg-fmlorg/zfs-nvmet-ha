@@ -31,6 +31,11 @@ JFT=${JFT:-5min}
 STALL=${STALL:-120}
 BUMPS=${BUMPS:-5}
 FENCE_DELAY=${FENCE_DELAY:-40}
+# RESTART_SEC: the override's RestartSec.  The field has 1s, but there the
+# DC saw the node leave at the kill and rejoin 6 s later; in the lab a 1 s
+# restart lands inside corosync's token timeout, the DC sees the leave and
+# the rejoin in one membership change, and nothing is fenced.
+RESTART_SEC=${RESTART_SEC:-6}
 mkdir -p "$OUT"
 
 port() { case $1 in ctl-a) echo 2221;; ctl-b) echo 2222;; host) echo 2223;; esac; }
@@ -86,8 +91,8 @@ logging {
 	timestamp: on
 }
 EOF
-# The override from the field, as written there.
-cat > "$OUT/corosync-override.conf" <<'EOF'
+# The override from the field, but for RestartSec (see RESTART_SEC).
+cat > "$OUT/corosync-override.conf" <<EOF
 [Unit]
 Before=pacemaker.service
 Requires=pacemaker.service
@@ -97,7 +102,7 @@ StartLimitIntervalSec=10s
 
 [Service]
 Restart=on-failure
-RestartSec=1s
+RestartSec=${RESTART_SEC}s
 EOF
 
 for v in ctl-a ctl-b; do
@@ -189,8 +194,8 @@ while [ $i -lt "$BUMPS" ]; do
 	sleep 1
 done
 sleep 10
-on ctl-b sudo cibadmin -Q -l 2>/dev/null | head -c 300 > "$OUT/cib-version-b.txt" || :
-on ctl-a sudo cibadmin -Q -l 2>/dev/null | head -c 300 > "$OUT/cib-version-a.txt" || :
+on ctl-b sudo cibadmin -Q -l 2>/dev/null | grep -m1 -o '<cib [^>]*>' > "$OUT/cib-version-b.txt" || :
+on ctl-a sudo cibadmin -Q -l 2>/dev/null | grep -m1 -o '<cib [^>]*>' > "$OUT/cib-version-a.txt" || :
 on ctl-b sudo crm_mon -1 | tee "$OUT/crm-before.txt"
 
 log "kill corosync on ctl-a"
@@ -218,7 +223,7 @@ done
 log "svc on ctl-b at +${t_up:-never}s"
 
 on ctl-b sudo stonith_admin --history ctl-a > "$OUT/fence-history.txt" 2>&1 || :
-on ctl-b sudo journalctl -o short-precise --since "@$t_kill" -u corosync -u pacemaker -t fence_lab -t lab \
+on ctl-b sudo journalctl -o short-precise --since "-20min" -u corosync -u pacemaker -t fence_lab -t lab \
     > "$OUT/ctl-b-journal.txt" 2>&1 || :
 on ctl-b sudo cat /var/log/pacemaker/pacemaker.log > "$OUT/ctl-b-pacemaker.log" 2>&1 || :
 grep -E 'Accepting join-[0-9]+ request|Delaying (join-[0-9]+ )?finalization|Finalization not needed|Finalizing join|join-[0-9]+: (Complete|Still waiting)|State transition|Finalization Timer|I_ELECTION' \
@@ -237,10 +242,10 @@ fi
 	echo "### Join stall after corosync kill ($PCMK_RPM)"
 	echo
 	echo "- verdict: **$verdict**"
-	echo "- DC: $DC; join-finalization-timeout $JFT; fence delay ${FENCE_DELAY}s; $BUMPS config changes before the kill"
+	echo "- DC: $DC; join-finalization-timeout $JFT; fence delay ${FENCE_DELAY}s; RestartSec ${RESTART_SEC}s; $BUMPS config changes before the kill"
 	echo "- fence done at +${t_fenced:-?}s, svc started on ctl-b at +${t_up:-never}s after the kill"
 	echo "- DC seen in S_FINALIZE_JOIN: ${saw_finalize:-no}"
-	echo "- CIB before the kill: b \`$(grep -o 'epoch="[0-9]*"\|num_updates="[0-9]*"' "$OUT/cib-version-b.txt" | tr '\n' ' ')\`, a \`$(grep -o 'epoch="[0-9]*"\|num_updates="[0-9]*"' "$OUT/cib-version-a.txt" | tr '\n' ' ')\`"
+	echo "- CIB before the kill: b \`$( grep -o ' \(admin_epoch\|epoch\|num_updates\)="[0-9]*"' "$OUT/cib-version-b.txt" | tr '\n' ' ')\`, a \`$( grep -o ' \(admin_epoch\|epoch\|num_updates\)="[0-9]*"' "$OUT/cib-version-a.txt" | tr '\n' ' ')\`"
 	echo
 	echo "Join decisions on the DC (debug log):"
 	echo
