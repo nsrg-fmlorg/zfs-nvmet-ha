@@ -13,6 +13,13 @@ name: joinstall
 
 on:
   workflow_dispatch:
+    inputs:
+      restart_sec:
+        description: corosync's RestartSec in the override
+        default: '1'
+      partition_sec:
+        description: seconds of dropped corosync traffic after the restart (0 for none)
+        default: '8'
   push:
     paths:
       - 'lab/joinstall.sh'
@@ -117,6 +124,8 @@ jobs:
         run: |
           set -o pipefail
           mkdir -p work/out
+          RESTART_SEC=${{ inputs.restart_sec || '1' }} \
+          PARTITION_SEC=${{ inputs.partition_sec || '8' }} \
           PCMK_VERSION=${{ matrix.pcmk }} sh lab/joinstall.sh 2>&1 | tee work/out/scenario.txt
 
       - name: Guest setup logs
