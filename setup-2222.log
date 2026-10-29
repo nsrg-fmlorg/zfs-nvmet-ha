@@ -1,0 +1,170 @@
+NAME="AlmaLinux"
+VERSION="10.2 (Lavender Lion)"
+RELEASE_TYPE=stable
+ID="almalinux"
+ID_LIKE="rhel centos fedora"
+VERSION_ID="10.2"
+PLATFORM_ID="platform:el10"
+PRETTY_NAME="AlmaLinux 10.2 (Lavender Lion)"
+ANSI_COLOR="0;34"
+LOGO="fedora-logo-icon"
+CPE_NAME="cpe:/o:almalinux:almalinux:10.2"
+HOME_URL="https://almalinux.org/"
+DOCUMENTATION_URL="https://wiki.almalinux.org/"
+VENDOR_NAME="AlmaLinux"
+VENDOR_URL="https://almalinux.org/"
+BUG_REPORT_URL="https://bugs.almalinux.org/"
+
+ALMALINUX_MANTISBT_PROJECT="AlmaLinux-10"
+ALMALINUX_MANTISBT_PROJECT_VERSION="10.2"
+REDHAT_SUPPORT_PRODUCT="AlmaLinux"
+REDHAT_SUPPORT_PRODUCT_VERSION="10.2"
+SUPPORT_END=2035-06-01
+6.12.0-211.64.1.el10_2.x86_64
++ r dnf install -yq https://zfsonlinux.org/epel/zfs-release-3-0.el10.noarch.rpm
++ for i in 1 2 3 4 5
++ dnf install -yq https://zfsonlinux.org/epel/zfs-release-3-0.el10.noarch.rpm
+
+Installed:
+  zfs-release-3-0.el10.noarch                                                   
+
++ return
++ dnf config-manager --disable zfs
++ dnf config-manager --enable zfs-kmod
+++ uname -r
++ dnf install -yq kernel-modules-extra-6.12.0-211.64.1.el10_2.x86_64
+
+Installed:
+  kernel-modules-extra-6.12.0-211.64.1.el10_2.x86_64                            
+
++ r dnf install -yq zfs
++ for i in 1 2 3 4 5
++ dnf install -yq zfs
+Importing GPG key 0x9DB84141:
+ Userid     : "OpenZFS <release@openzfs.org>"
+ Fingerprint: 7DC7 299D CF7C 7FD9 CD87 701B A599 FD5E 9DB8 4141
+ From       : /etc/pki/rpm-gpg/RPM-GPG-KEY-openzfs-el-10
+
+Installed:
+  avahi-libs-0.9~rc2-2.el10.x86_64     kmod-zfs-2.2.11-1.el10.x86_64           
+  libnvpair3-2.2.11-1.el10.x86_64      libuutil3-2.2.11-1.el10.x86_64          
+  libuv-1:1.52.1-1.el10_2.x86_64       libzfs5-2.2.11-1.el10.x86_64            
+  libzpool5-2.2.11-1.el10.x86_64       lm_sensors-libs-3.6.0-20.el10.x86_64    
+  pcp-conf-7.0.3-5.el10_2.x86_64       pcp-libs-7.0.3-5.el10_2.x86_64          
+  sysstat-12.7.6-4.el10.x86_64         zfs-2.2.11-1.el10.x86_64                
+
++ return
++ modprobe zfs
++ echo 'zfs: kmod'
+zfs: kmod
++ r dnf install -yq nvme-cli python3
++ for i in 1 2 3 4 5
++ dnf install -yq nvme-cli python3
+
+Installed:
+  nvme-cli-2.16-2.el10.x86_64                                                   
+
++ return
++ dnf config-manager --set-enabled highavailability
++ r dnf install -yq pacemaker corosync resource-agents libxml2 git
++ for i in 1 2 3 4 5
++ dnf install -yq pacemaker corosync resource-agents libxml2 git
+
+Installed:
+  bc-1.07.1-23.el10.x86_64                                                      
+  bzip2-1.0.8-25.el10.x86_64                                                    
+  corosync-3.1.10-1.el10_2.2.x86_64                                             
+  corosynclib-3.1.10-1.el10_2.2.x86_64                                          
+  git-2.52.0-1.el10.x86_64                                                      
+  git-core-2.52.0-1.el10.x86_64                                                 
+  git-core-doc-2.52.0-1.el10.noarch                                             
+  libknet1-1.30-1.el10.x86_64                                                   
+  libknet1-crypto-nss-plugin-1.30-1.el10.x86_64                                 
+  libnozzle1-1.30-1.el10.x86_64                                                 
+  libpkgconf-2.1.0-3.el10.x86_64                                                
+  libqb-2.0.8-6.el10.x86_64                                                     
+  libxslt-1.1.39-8.el10_2.1.x86_64                                              
+  net-snmp-libs-1:5.9.4-19.el10.x86_64                                          
+  net-tools-2.0-0.73.20160912git.el10.x86_64                                    
+  nspr-4.39.0-5.el10_0.x86_64                                                   
+  nss-3.124.0-5.el10_0.x86_64                                                   
+  nss-softokn-3.124.0-5.el10_0.x86_64                                           
+  nss-softokn-freebl-3.124.0-5.el10_0.x86_64                                    
+  nss-sysinit-3.124.0-5.el10_0.x86_64                                           
+  nss-util-3.124.0-5.el10_0.x86_64                                              
+  pacemaker-3.0.1-5.el10_2.1.x86_64                                             
+  pacemaker-cli-3.0.1-5.el10_2.1.x86_64                                         
+  pacemaker-cluster-libs-3.0.1-5.el10_2.1.x86_64                                
+  pacemaker-libs-3.0.1-5.el10_2.1.x86_64                                        
+  pacemaker-schemas-3.0.1-5.el10_2.1.noarch                                     
+  perl-AutoLoader-5.74-515.el10_2.noarch                                        
+  perl-B-1.89-515.el10_2.x86_64                                                 
+  perl-Carp-1.54-511.el10.noarch                                                
+  perl-Class-Struct-0.68-515.el10_2.noarch                                      
+  perl-Data-Dumper-2.189-512.el10.x86_64                                        
+  perl-Digest-1.20-511.el10.noarch                                              
+  perl-Digest-MD5-2.59-6.el10.x86_64                                            
+  perl-DynaLoader-1.56-515.el10_2.x86_64                                        
+  perl-Encode-4:3.21-511.el10.x86_64                                            
+  perl-Errno-1.38-515.el10_2.x86_64                                             
+  perl-Error-1:0.17029-18.el10.noarch                                           
+  perl-Exporter-5.78-511.el10.noarch                                            
+  perl-Fcntl-1.18-515.el10_2.x86_64                                             
+  perl-File-Basename-2.86-515.el10_2.noarch                                     
+  perl-File-Path-2.18-512.el10.noarch                                           
+  perl-File-Temp-1:0.231.100-512.el10.noarch                                    
+  perl-File-stat-1.14-515.el10_2.noarch                                         
+  perl-FileHandle-2.05-515.el10_2.noarch                                        
+  perl-Getopt-Long-1:2.58-3.el10.noarch                                         
+  perl-Getopt-Std-1.14-515.el10_2.noarch                                        
+  perl-Git-2.52.0-1.el10.noarch                                                 
+  perl-HTTP-Tiny-0.088-512.el10.noarch                                          
+  perl-IO-1.55-515.el10_2.x86_64                                                
+  perl-IO-Socket-IP-0.42-512.el10.noarch                                        
+  perl-IO-Socket-SSL-2.085-3.el10.noarch                                        
+  perl-IPC-Open3-1.22-515.el10_2.noarch                                         
+  perl-MIME-Base64-3.16-511.el10.x86_64                                         
+  perl-Mozilla-CA-20231213-5.el10.noarch                                        
+  perl-NDBM_File-1.17-515.el10_2.x86_64                                         
+  perl-Net-SSLeay-1.94-8.el10.x86_64                                            
+  perl-POSIX-2.20-515.el10_2.x86_64                                             
+  perl-PathTools-3.91-512.el10.x86_64                                           
+  perl-Pod-Escapes-1:1.07-511.el10.noarch                                       
+  perl-Pod-Perldoc-3.28.01-512.el10.noarch                                      
+  perl-Pod-Simple-1:3.45-511.el10.noarch                                        
+  perl-Pod-Usage-4:2.03-511.el10.noarch                                         
+  perl-Scalar-List-Utils-5:1.63-511.el10.x86_64                                 
+  perl-SelectSaver-1.02-515.el10_2.noarch                                       
+  perl-Socket-4:2.038-511.el10.x86_64                                           
+  perl-Storable-1:3.32-511.el10.x86_64                                          
+  perl-Symbol-1.09-515.el10_2.noarch                                            
+  perl-Term-ANSIColor-5.01-512.el10.noarch                                      
+  perl-Term-Cap-1.18-511.el10.noarch                                            
+  perl-TermReadKey-2.38-24.el10.x86_64                                          
+  perl-Text-ParseWords-3.31-511.el10.noarch                                     
+  perl-Text-Tabs+Wrap-2024.001-511.el10.noarch                                  
+  perl-Time-Local-2:1.350-511.el10.noarch                                       
+  perl-TimeDate-1:2.33-16.el10.noarch                                           
+  perl-URI-5.27-3.el10_2.1.noarch                                               
+  perl-Unicode-Normalize-1.32-511.el10.x86_64                                   
+  perl-base-2.27-515.el10_2.noarch                                              
+  perl-constant-1.33-512.el10.noarch                                            
+  perl-if-0.61.000-515.el10_2.noarch                                            
+  perl-interpreter-4:5.40.2-515.el10_2.x86_64                                   
+  perl-lib-0.65-515.el10_2.x86_64                                               
+  perl-libnet-3.15-512.el10.noarch                                              
+  perl-libs-4:5.40.2-515.el10_2.x86_64                                          
+  perl-locale-1.12-515.el10_2.noarch                                            
+  perl-mro-1.29-515.el10_2.x86_64                                               
+  perl-overload-1.37-515.el10_2.noarch                                          
+  perl-overloading-0.02-515.el10_2.noarch                                       
+  perl-parent-1:0.241-512.el10.noarch                                           
+  perl-podlators-1:5.01-511.el10.noarch                                         
+  perl-vars-1.05-515.el10_2.noarch                                              
+  pkgconf-2.1.0-3.el10.x86_64                                                   
+  pkgconf-m4-2.1.0-3.el10.noarch                                                
+  pkgconf-pkg-config-2.1.0-3.el10.x86_64                                        
+  resource-agents-4.16.0-53.el10_2.17.x86_64                                    
+
++ return
++ modprobe zfs

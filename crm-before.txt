@@ -1,0 +1,14 @@
+Cluster Summary:
+  * Stack: corosync (Pacemaker is running)
+  * Current DC: ctl-b (version 3.0.1-5.lab1.el10.1-d326fbe) - partition with quorum
+  * Last updated: Thu Oct 29 16:46:13 2026 on ctl-b
+  * Last change:  Thu Oct 29 16:46:01 2026 by root via root on ctl-b
+  * 2 nodes configured
+  * 2 resource instances configured
+
+Node List:
+  * Online: [ ctl-a ctl-b ]
+
+Active Resources:
+  * fence-lab	(stonith:fence_lab):	 Started ctl-a
+  * svc	(ocf:pacemaker:Dummy):	 Started ctl-a
