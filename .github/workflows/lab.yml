@@ -71,6 +71,10 @@ jobs:
   agents:
     runs-on: ubuntu-24.04
     timeout-minutes: 40
+    strategy:
+      fail-fast: false
+      matrix:
+        transport: [tcp, rdma, fc]
     steps:
       - uses: actions/checkout@v4
 
@@ -93,7 +97,7 @@ jobs:
 
       - name: Resource agents
         timeout-minutes: 25
-        run: sh lab/agents.sh
+        run: AGENT_TRANSPORT=${{ matrix.transport }} sh lab/agents.sh
 
       - name: Summary
         if: always()
@@ -102,7 +106,7 @@ jobs:
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: agents-logs
+          name: agents-logs-${{ matrix.transport }}
           path: work/out
 
   shellcheck:

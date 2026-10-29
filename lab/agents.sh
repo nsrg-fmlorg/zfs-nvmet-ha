@@ -33,6 +33,48 @@ for v in ctl-a host; do
 		sleep 10
 	done
 done
+# AGENT_TRANSPORT: tcp (default), rdma over soft-RoCE (rdma_rxe on the lab
+# network), or fc over nvme-fcloop.  fcloop only joins ports inside one
+# kernel, so with fc ctl-a is its own host.
+TR=${AGENT_TRANSPORT:-tcp}
+case $TR in
+tcp|rdma)
+	FAM=ipv4 PADDR=10.10.0.11 SVC=4421 HV=host
+	CONNECT="-t $TR -a 10.10.0.11 -s 4421";;
+fc)
+	# fcloop.c: target and local ports take wwnn= and wwpn=, a remote port
+	# also lpwwnn= and lpwwpn= of the local port it is reached from.
+	TWN=0x10000000000000aa TWP=0x20000000000000aa
+	HWN=0x10000000000000bb HWP=0x20000000000000bb
+	FAM=fc PADDR=nn-$TWN:pn-$TWP SVC=none HV=ctl-a
+	CONNECT="-t fc -a nn-$TWN:pn-$TWP -w nn-$HWN:pn-$HWP";;
+*)	echo "unknown AGENT_TRANSPORT $TR" >&2; exit 2;;
+esac
+echo "transport $TR" > "$OUT/transport.txt"
+
+case $TR in
+rdma)
+	for v in ctl-a host; do
+		on "$v" sudo sh -eux >> "$OUT/transport.txt" 2>&1 <<'EOF' || { cat "$OUT/transport.txt"; exit 1; }
+modprobe rdma_rxe
+dev=$(ip -o -4 addr show | awk '$4 ~ /^10\.10\.0\./ { print $2 }')
+rdma link add rxe0 type rxe netdev "$dev"
+rdma link show
+modprobe nvmet-rdma 2>/dev/null || :
+modprobe nvme-rdma
+EOF
+	done;;
+fc)
+	on ctl-a sudo sh -eux >> "$OUT/transport.txt" 2>&1 <<EOF || { cat "$OUT/transport.txt"; exit 1; }
+modprobe nvmet-fc; modprobe nvme-fc; modprobe nvme-fcloop
+F=/sys/class/fcloop/ctl
+echo "wwnn=$TWN,wwpn=$TWP" > \$F/add_target_port
+echo "wwnn=$HWN,wwpn=$HWP" > \$F/add_local_port
+echo "wwnn=$TWN,wwpn=$TWP,lpwwnn=$HWN,lpwwpn=$HWP" > \$F/add_remote_port
+EOF
+	;;
+esac
+
 put ctl-a "$HERE/patches/resource-agents-nvmet-ana-cntlid.diff" /home/ubuntu/ra.diff
 
 on ctl-a sudo sh -eu > "$OUT/agents.txt" 2>&1 <<EOF || { cat "$OUT/agents.txt"; exit 1; }
@@ -89,7 +131,7 @@ expect 0 "namespace start in ANA group 2" \
 equal \$C/subsystems/\$NQN/namespaces/1/ana_grpid 2
 
 # port: ANA state
-P="OCF_RESKEY_port_id=5 OCF_RESKEY_addr=10.10.0.11 OCF_RESKEY_svcid=4421 OCF_RESKEY_nqns=\$NQN"
+P="OCF_RESKEY_port_id=5 OCF_RESKEY_type=$TR OCF_RESKEY_addr_fam=$FAM OCF_RESKEY_addr=$PADDR OCF_RESKEY_svcid=$SVC OCF_RESKEY_nqns=\$NQN"
 expect 6 "ana_state bogus refused" env \$P OCF_RESKEY_ana_state=bogus sh heartbeat/nvmet-port validate-all
 expect 6 "port ana_grpid 0 refused" env \$P OCF_RESKEY_ana_grpid=0 sh heartbeat/nvmet-port validate-all
 expect 0 "port start, group 2 inaccessible" \
@@ -102,9 +144,10 @@ cat "$OUT/agents.txt"
 # The host reads the state through the ANA log page, before and after a
 # reload changes it.
 ana_log() {
-	on host sudo sh -eu <<'EOF'
-modprobe nvme-tcp
-nvme connect -t tcp -a 10.10.0.11 -s 4421 -n nqn.2026-10.org.fml.nsrg:ra-test > /dev/null 2>&1 || :
+	{ echo "TR=$TR CONNECT='$CONNECT'"; cat <<'EOF'; } | on "$HV" sudo sh -eu
+modprobe nvme-$TR
+# shellcheck disable=SC2086
+nvme connect $CONNECT -n nqn.2026-10.org.fml.nsrg:ra-test > /dev/null 2>&1 || :
 sleep 2
 c=
 for d in /sys/class/nvme/nvme*; do
@@ -137,7 +180,7 @@ cd /home/ubuntu/ra
 export OCF_ROOT=/usr/lib/ocf OCF_FUNCTIONS_DIR=/usr/lib/ocf/lib/heartbeat
 C=/sys/kernel/config/nvmet
 NQN=nqn.2026-10.org.fml.nsrg:ra-test
-P="OCF_RESKEY_port_id=5 OCF_RESKEY_addr=10.10.0.11 OCF_RESKEY_svcid=4421 OCF_RESKEY_nqns=\$NQN OCF_RESKEY_ana_grpid=2"
+P="OCF_RESKEY_port_id=5 OCF_RESKEY_type=$TR OCF_RESKEY_addr_fam=$FAM OCF_RESKEY_addr=$PADDR OCF_RESKEY_svcid=$SVC OCF_RESKEY_nqns=\$NQN OCF_RESKEY_ana_grpid=2"
 env \$P OCF_RESKEY_ana_state=optimized sh heartbeat/nvmet-port reload && echo "ok   reload rc 0" || echo "FAIL reload"
 s=\$(cat \$C/ports/5/ana_groups/2/ana_state)
 [ "\$s" = optimized ] && echo "ok   reload set optimized" || echo "FAIL reload left \$s"
@@ -145,13 +188,13 @@ EOF
 sleep 2
 echo "host after reload: $(ana_log 2>>"$OUT/ana-raw.txt" | tr '\n' ' ')" | tee -a "$OUT/agents.txt"
 
-on host sudo nvme disconnect -n nqn.2026-10.org.fml.nsrg:ra-test > /dev/null 2>&1 || :
+on "$HV" sudo nvme disconnect -n nqn.2026-10.org.fml.nsrg:ra-test > /dev/null 2>&1 || :
 on ctl-a sudo sh -eu >> "$OUT/agents.txt" 2>&1 <<EOF || :
 cd /home/ubuntu/ra
 export OCF_ROOT=/usr/lib/ocf OCF_FUNCTIONS_DIR=/usr/lib/ocf/lib/heartbeat
 C=/sys/kernel/config/nvmet
 NQN=nqn.2026-10.org.fml.nsrg:ra-test
-env OCF_RESKEY_port_id=5 OCF_RESKEY_addr=10.10.0.11 OCF_RESKEY_svcid=4421 OCF_RESKEY_nqns=\$NQN OCF_RESKEY_ana_grpid=2 \
+env OCF_RESKEY_port_id=5 OCF_RESKEY_type=$TR OCF_RESKEY_addr_fam=$FAM OCF_RESKEY_addr=$PADDR OCF_RESKEY_svcid=$SVC OCF_RESKEY_nqns=\$NQN OCF_RESKEY_ana_grpid=2 \
     sh heartbeat/nvmet-port stop && echo "ok   port stop rc 0" || echo "FAIL port stop"
 [ -d \$C/ports/5 ] && echo "FAIL port 5 still there" || echo "ok   port 5 removed with its ANA group"
 EOF
@@ -163,17 +206,17 @@ cd /home/ubuntu/ra
 export OCF_ROOT=/usr/lib/ocf OCF_FUNCTIONS_DIR=/usr/lib/ocf/lib/heartbeat
 C=/sys/kernel/config/nvmet
 NQN=nqn.2026-10.org.fml.nsrg:ra-test
-env OCF_RESKEY_port_id=5 OCF_RESKEY_addr=10.10.0.11 OCF_RESKEY_svcid=4421 OCF_RESKEY_nqns=\$NQN OCF_RESKEY_ana_grpid=2 \
+env OCF_RESKEY_port_id=5 OCF_RESKEY_type=$TR OCF_RESKEY_addr_fam=$FAM OCF_RESKEY_addr=$PADDR OCF_RESKEY_svcid=$SVC OCF_RESKEY_nqns=\$NQN OCF_RESKEY_ana_grpid=2 \
     OCF_RESKEY_ana_state=non-optimized sh heartbeat/nvmet-port start && echo "ok   port start again rc 0" || echo "FAIL port start again"
 s=\$(cat \$C/ports/5/ana_groups/2/ana_state)
 [ "\$s" = non-optimized ] && echo "ok   started again as non-optimized" || echo "FAIL started again as \$s"
 EOF
 echo "host after restart: $(ana_log 2>>"$OUT/ana-raw.txt" | tr '\n' ' ')" | tee -a "$OUT/agents.txt"
-on host sudo nvme disconnect -n nqn.2026-10.org.fml.nsrg:ra-test > /dev/null 2>&1 || :
+on "$HV" sudo nvme disconnect -n nqn.2026-10.org.fml.nsrg:ra-test > /dev/null 2>&1 || :
 on ctl-a sudo sh -eu >> "$OUT/agents.txt" 2>&1 <<EOF || :
 cd /home/ubuntu/ra
 export OCF_ROOT=/usr/lib/ocf OCF_FUNCTIONS_DIR=/usr/lib/ocf/lib/heartbeat
-env OCF_RESKEY_port_id=5 OCF_RESKEY_addr=10.10.0.11 OCF_RESKEY_svcid=4421 OCF_RESKEY_nqns=nqn.2026-10.org.fml.nsrg:ra-test OCF_RESKEY_ana_grpid=2 \
+env OCF_RESKEY_port_id=5 OCF_RESKEY_type=$TR OCF_RESKEY_addr_fam=$FAM OCF_RESKEY_addr=$PADDR OCF_RESKEY_svcid=$SVC OCF_RESKEY_nqns=nqn.2026-10.org.fml.nsrg:ra-test OCF_RESKEY_ana_grpid=2 \
     sh heartbeat/nvmet-port stop && echo "ok   final port stop rc 0" || echo "FAIL final port stop"
 EOF
 tail -n 6 "$OUT/agents.txt"
