@@ -1,0 +1,44 @@
+== 12:56:51 ready: 5.14.0-687.53.1.el9_8.x86_64
+== 12:56:52 installed: pacemaker-2.1.10-3.el9_8.x86_64
+== 12:56:52 start ctl-b, then ctl-a
+== 12:57:19 DC: ctl-b
++ crm_attribute --type crm_config --name stonith-enabled --update true
++ crm_attribute --type crm_config --name no-quorum-policy --update ignore
++ crm_attribute --type crm_config --name join-finalization-timeout --update 5min
++ cibadmin --create --scope resources --xml-file /tmp/cib-rsc.xml
++ cibadmin --create --scope constraints --xml-file /tmp/cib-cons.xml
+== 12:57:20 5 configuration changes
+Cluster Summary:
+  * Stack: corosync (Pacemaker is running)
+  * Current DC: ctl-b (version 2.1.10-3.el9_8-5693eaeee) - partition with quorum
+  * Last updated: Thu Oct 29 12:57:36 2026 on ctl-b
+  * Last change:  Thu Oct 29 12:57:25 2026 by root via root on ctl-b
+  * 2 nodes configured
+  * 2 resource instances configured
+
+Node List:
+  * Online: [ ctl-a ctl-b ]
+
+Active Resources:
+  * fence-lab	(stonith:fence_lab):	 Started ctl-a
+  * svc	(ocf:pacemaker:Dummy):	 Started ctl-a
+== 12:57:36 kill corosync on ctl-a
+== 13:05:39 svc on ctl-b at +nevers
+### Join stall after corosync kill (pacemaker-2.1.10-3.el9_8.x86_64)
+
+- verdict: **NOT FENCED (scenario did not run as meant)**
+- DC: ctl-b; join-finalization-timeout 5min; fence delay 40s; 5 config changes before the kill
+- fence done at +?s, svc started on ctl-b at +nevers after the kill
+- DC seen in S_FINALIZE_JOIN: no
+- CIB before the kill: b `epoch="15" num_updates="0" epoch="0" `, a `epoch="15" num_updates="0" epoch="0" `
+
+Join decisions on the DC (debug log):
+
+```
+Oct 29 12:57:40.602 localhost pacemaker-controld  [15477] (do_dc_join_filter_offer) 	debug: Accepting join-1 request from ctl-a (with better CIB generation than current best from ctl-b) | ref=join_request-crmd-1793278660
+Oct 29 12:57:40.602 localhost pacemaker-controld  [15477] (do_dc_join_filter_offer) 	debug: Accepting join-1 request from ctl-a | ref=join_request-crmd-1793278660-6
+Oct 29 12:57:40.602 localhost pacemaker-controld  [15477] (do_dc_join_filter_offer) 	debug: Accepting join-1 request from ctl-b | ref=join_request-crmd-1793278660-41
+Oct 29 12:57:40.602 localhost pacemaker-controld  [15477] (do_dc_join_finalize) 	notice: Finalizing join-1 for 2 nodes (sync'ing CIB from ctl-a)
+Oct 29 12:57:40.605 localhost pacemaker-controld  [15477] (check_join_state) 	debug: join-1: Still waiting on 2 integrated nodes | state=S_FINALIZE_JOIN for=finalize_sync_callback
+Oct 29 12:57:40.610 localhost pacemaker-controld  [15477] (check_join_state) 	debug: join-1: Complete | state=S_FINALIZE_JOIN for=join_node_state_commit_callback
+```
