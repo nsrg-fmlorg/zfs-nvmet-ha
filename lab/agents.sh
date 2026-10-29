@@ -164,7 +164,7 @@ ana_log() {
 	{ echo "TR=$TR CONNECT='$CONNECT'"; cat <<'EOF'; } | on "$HV" sudo sh -eu
 modprobe nvme-$TR
 # shellcheck disable=SC2086
-nvme connect $CONNECT -n nqn.2026-10.org.fml.nsrg:ra-test > /dev/null 2>&1 || :
+nvme connect $CONNECT -n nqn.2026-10.org.fml.nsrg:ra-test >&2 || echo "connect failed: $?" >&2
 sleep 2
 c=
 for d in /sys/class/nvme/nvme*; do
@@ -238,6 +238,7 @@ env OCF_RESKEY_port_id=5 OCF_RESKEY_type=$TR OCF_RESKEY_addr_fam=$FAM OCF_RESKEY
 EOF
 tail -n 6 "$OUT/agents.txt"
 echo "--- raw ANA log as the host read it"; cat "$OUT/ana-raw.txt" 2>/dev/null || :
+on "$HV" sudo dmesg > "$OUT/host-dmesg.txt" 2>&1 || :
 
 {
 	echo "### resource agents (ClusterLabs/resource-agents $(echo $RA_COMMIT | cut -c1-8) + patch)"
