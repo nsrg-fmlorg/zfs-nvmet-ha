@@ -19,7 +19,7 @@
 #
 # PCMK_VERSION: "2.1.9" installs 2.1.9-1.el9 from the AlmaLinux 9.6 vault;
 # "latest" keeps what the HighAvailability repository has now; "patched"
-# installs 2.1.9-1.el9 rebuilt with lab/patches/pacemaker-2.1.9-*.patch.
+# installs what lab/build-pacemaker.sh rebuilt with the fix (PCMK_RPMS).
 # JFT: join-finalization-timeout for the run.  STALL: seconds after the
 # fence with no takeover that count as reproduced.
 set -eu
@@ -141,7 +141,7 @@ elif [ "$PCMK_VERSION" = patched ]; then
 	# The rebuilt packages for every pacemaker package installed.
 	set --
 	for n in \$(rpm -qa --qf '%{NAME}\n' 'pacemaker*'); do
-		for f in /tmp/pcmk-rpms/\$n-2.1.9-*.rpm; do
+		for f in /tmp/pcmk-rpms/\$n-[0-9]*.rpm; do
 			if [ "\$(rpm -qp --qf '%{NAME}' "\$f")" = "\$n" ]; then set -- "\$@" "\$f"; fi
 		done
 	done

@@ -1,9 +1,15 @@
 name: joinstall
 
-# Pacemaker on AlmaLinux 9: kill corosync on the non-DC node with systemd
+# Pacemaker on AlmaLinux: kill corosync on the non-DC node with systemd
 # restarting it, and see whether the DC stalls in S_FINALIZE_JOIN after
 # the fence (lab/joinstall.sh).  The summary carries the verdict and the
 # DC's join decisions from its debug log.
+#
+# build: AlmaLinux 9's and 10's current pacemaker rebuilt with the fix in
+#   lab/patches (lab/build-pacemaker.sh).
+# publish: those packages, with repodata and source RPMs, on the branch
+#   pacemaker-joinfix-rpms, under el9/ and el10/.
+# joinstall: each distribution's stock package against the rebuilt one.
 
 on:
   workflow_dispatch:
@@ -13,27 +19,86 @@ on:
       - 'lab/fence_lab'
       - 'lab/build-pacemaker.sh'
       - 'lab/patches/pacemaker-*'
+      - 'lab/vms.sh'
       - '.github/workflows/joinstall.yml'
 
 concurrency:
   group: joinstall-${{ github.ref }}
   cancel-in-progress: true
 
-# The results also go to a branch of their own, joinstall-results/RUN-PCMK-N,
+# The results also go to a branch of their own, joinstall-results/RUN-...,
 # and the summary to an annotation, for readers who cannot fetch artifacts.
 permissions:
   contents: write
 
 jobs:
-  joinstall:
+  build:
     runs-on: ubuntu-24.04
-    timeout-minutes: 90
+    timeout-minutes: 60
     strategy:
       fail-fast: false
       matrix:
-        # patched: 2.1.9-1.el9 rebuilt with lab/patches/pacemaker-2.1.9-*.patch
-        pcmk: ['2.1.9', 'patched']
-        run: [1, 2, 3]
+        el: [9, 10]
+    steps:
+      - uses: actions/checkout@v4
+      - name: Rebuild pacemaker with the fix
+        run: sh lab/build-pacemaker.sh ${{ matrix.el }}
+      - uses: actions/upload-artifact@v4
+        with:
+          name: pcmk-el${{ matrix.el }}
+          path: work/pcmk-rpms
+
+  publish:
+    needs: build
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: rpms
+      - name: Push the packages to pacemaker-joinfix-rpms
+        env:
+          TOKEN: ${{ github.token }}
+          SHA: ${{ github.sha }}
+        run: |
+          r=$(mktemp -d)
+          for el in 9 10; do
+            [ -d rpms/pcmk-el$el ] && cp -r rpms/pcmk-el$el "$r/el$el"
+          done
+          cat > "$r/README.md" <<EOF
+          # Pacemaker with the join finalization fix
+
+          AlmaLinux's pacemaker rebuilt with lab/patches/pacemaker-*-join-offer-self.patch
+          (release suffix .lab1), from $SHA.  The DC no longer waits in S_FINALIZE_JOIN
+          until join-finalization-timeout when a node rejoins while being fenced.
+
+          | directory | packages |
+          |---|---|
+          | el9/ | $(cd "$r/el9" 2>/dev/null && ls pacemaker-2*.x86_64.rpm 2>/dev/null | head -n 1) |
+          | el10/ | $(cd "$r/el10" 2>/dev/null && ls pacemaker-3*.x86_64.rpm 2>/dev/null | head -n 1) |
+
+          Each directory is a dnf repository (repodata/) with the source RPM in SRPMS/.
+          Install over the distribution's packages on every node, then restart the cluster
+          one node at a time:
+
+              dnf install ./pacemaker-*.rpm   # the names already installed
+          EOF
+          sed -i 's/^          //' "$r/README.md"
+          cd "$r"
+          git init -q -b pacemaker-joinfix-rpms
+          git add .
+          git -c user.name=ci -c user.email=ci@localhost commit -qm "pacemaker with the join finalization fix, from $SHA"
+          git push -q -f "https://x-access-token:$TOKEN@github.com/${{ github.repository }}" pacemaker-joinfix-rpms
+
+  joinstall:
+    needs: build
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        el: [9, 10]
+        pcmk: ['latest', 'patched']
+        run: [1, 2]
     steps:
       - uses: actions/checkout@v4
 
@@ -48,16 +113,17 @@ jobs:
         uses: actions/cache@v4
         with:
           path: work/base.img
-          key: alma-cloudimg-${{ github.run_id }}
-          restore-keys: alma-cloudimg-
+          key: alma${{ matrix.el }}-cloudimg-${{ github.run_id }}
+          restore-keys: alma${{ matrix.el }}-cloudimg-
 
-      - name: Build patched pacemaker
+      - uses: actions/download-artifact@v4
         if: matrix.pcmk == 'patched'
-        timeout-minutes: 40
-        run: sh lab/build-pacemaker.sh
+        with:
+          name: pcmk-el${{ matrix.el }}
+          path: work/pcmk-rpms
 
       - name: Boot VMs
-        run: DISTRO=alma sh lab/vms.sh up
+        run: DISTRO=${{ matrix.el == 9 && 'alma' || 'alma10' }} sh lab/vms.sh up
 
       - name: Scenario
         timeout-minutes: 35
@@ -81,23 +147,23 @@ jobs:
       - name: Summary
         if: always()
         run: |
-          { echo "## pacemaker ${{ matrix.pcmk }} / run ${{ matrix.run }}"; cat work/out/summary.md; } >> "$GITHUB_STEP_SUMMARY" 2>/dev/null || true
+          { echo "## el${{ matrix.el }} pacemaker ${{ matrix.pcmk }} / run ${{ matrix.run }}"; cat work/out/summary.md; } >> "$GITHUB_STEP_SUMMARY" 2>/dev/null || true
 
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: joinstall-${{ matrix.pcmk }}-${{ matrix.run }}-logs
+          name: joinstall-el${{ matrix.el }}-${{ matrix.pcmk }}-${{ matrix.run }}-logs
           path: work/out
 
       - name: Publish results
         if: always()
         env:
-          BR: joinstall-results/${{ github.run_id }}-${{ matrix.pcmk }}-${{ matrix.run }}
+          BR: joinstall-results/${{ github.run_id }}-el${{ matrix.el }}-${{ matrix.pcmk }}-${{ matrix.run }}
           TOKEN: ${{ github.token }}
         run: |
           f=work/out/summary.md
           [ -f "$f" ] || { echo "no summary"; tail -n 40 work/out/scenario.txt > "$f" 2>/dev/null || :; }
-          echo "::notice title=joinstall ${{ matrix.pcmk }} run ${{ matrix.run }}::$(sed ':a;N;$!ba;s/%/%25/g;s/\r/%0D/g;s/\n/%0A/g' "$f")"
+          echo "::notice title=joinstall el${{ matrix.el }} ${{ matrix.pcmk }} run ${{ matrix.run }}::$(sed ':a;N;$!ba;s/%/%25/g;s/\r/%0D/g;s/\n/%0A/g' "$f")"
           r=$(mktemp -d)
           for x in work/out/*.txt work/out/*.md work/out/*.log; do
             [ -f "$x" ] || continue
@@ -107,5 +173,5 @@ jobs:
           cd "$r"
           git init -q -b "$BR"
           git add .
-          git -c user.name=ci -c user.email=ci@localhost commit -qm "joinstall results ${{ github.run_id }} ${{ matrix.pcmk }} ${{ matrix.run }}"
+          git -c user.name=ci -c user.email=ci@localhost commit -qm "joinstall results ${{ github.run_id }} el${{ matrix.el }} ${{ matrix.pcmk }} ${{ matrix.run }}"
           git push -q "https://x-access-token:$TOKEN@github.com/${{ github.repository }}" "$BR"

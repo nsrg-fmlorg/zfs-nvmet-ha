@@ -8,7 +8,9 @@
 # usage: vms.sh up | down
 #
 # DISTRO picks the guests' distribution: ubuntu (24.04, the default),
-# debian (12) or alma (AlmaLinux 9, for the RHEL family).  Every guest
+# debian (12) or alma (AlmaLinux 9, for the RHEL family); alma10
+# (AlmaLinux 10) gets the cluster stack only, no ZFS, for the Pacemaker
+# scenarios that use no pool (joinstall.sh).  Every guest
 # gets a user "ubuntu" whatever the distribution, so the scenarios log in
 # the same way.
 set -eu
@@ -20,6 +22,7 @@ ubuntu)	img=https://cloud-images.ubuntu.com/noble/current/noble-server-cloudimg-
 # generic, not genericcloud: the cloud kernel leaves out nvmet.
 debian)	img=https://cloud.debian.org/images/cloud/bookworm/latest/debian-12-generic-amd64.qcow2;;
 alma)	img=https://repo.almalinux.org/almalinux/9/cloud/x86_64/images/AlmaLinux-9-GenericCloud-latest.x86_64.qcow2;;
+alma10)	img=https://repo.almalinux.org/almalinux/10/cloud/x86_64/images/AlmaLinux-10-GenericCloud-latest.x86_64.qcow2;;
 *)	echo "unknown DISTRO $DISTRO" >&2; exit 2;;
 esac
 IMG_URL=${IMG_URL:-$img}
@@ -56,6 +59,11 @@ setup_script() {
 		[ -z "$ha" ] || echo "dnf config-manager --set-enabled highavailability"
 		[ -z "$ha" ] || echo "r dnf install -yq pacemaker corosync resource-agents libxml2 git"
 		;;
+	alma10)
+		[ -z "$ha" ] || echo "dnf config-manager --set-enabled highavailability"
+		[ -z "$ha" ] || echo "r dnf install -yq pacemaker corosync resource-agents libxml2 git"
+		return
+		;;
 	esac
 	echo "modprobe zfs"
 }
@@ -82,7 +90,7 @@ write_files:
 runcmd:
   # lab-ready only when every package went in: a scenario started on a
   # guest whose install failed fails later, on whatever it lacks.
-  - sh -eux /var/lib/cloud/lab-setup.sh > /var/log/lab-setup.log 2>&1 && zgenhostid -f 0x0000a00$n && touch /var/lib/cloud/lab-ready
+  - sh -eux /var/lib/cloud/lab-setup.sh > /var/log/lab-setup.log 2>&1 && { ! command -v zgenhostid || zgenhostid -f 0x0000a00$n; } && touch /var/lib/cloud/lab-ready
 EOF
 	cat > "$d/network-config" <<EOF
 version: 2
