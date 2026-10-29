@@ -1,0 +1,58 @@
+== 14:13:07 ready: 5.14.0-687.53.1.el9_8.x86_64
+== 14:13:22 installed: pacemaker-2.1.9-1.el9.x86_64
+== 14:13:22 start ctl-b, then ctl-a
+== 14:13:49 DC: ctl-b
++ crm_attribute --type crm_config --name stonith-enabled --update true
++ crm_attribute --type crm_config --name no-quorum-policy --update ignore
++ crm_attribute --type crm_config --name join-finalization-timeout --update 5min
++ cibadmin --create --scope resources --xml-file /tmp/cib-rsc.xml
++ cibadmin --create --scope constraints --xml-file /tmp/cib-cons.xml
+== 14:13:49 5 configuration changes
+Cluster Summary:
+  * Stack: corosync (Pacemaker is running)
+  * Current DC: ctl-b (version 2.1.9-1.el9-49aab9983) - partition with quorum
+  * Last updated: Thu Oct 29 14:14:06 2026 on ctl-b
+  * Last change:  Thu Oct 29 14:13:54 2026 by root via root on ctl-b
+  * 2 nodes configured
+  * 2 resource instances configured
+
+Node List:
+  * Online: [ ctl-a ctl-b ]
+
+Active Resources:
+  * fence-lab	(stonith:fence_lab):	 Started ctl-a
+  * svc	(ocf:pacemaker:Dummy):	 Started ctl-a
+== 14:14:06 kill corosync on ctl-a
+== 14:15:07 fenced at +60s
+== 14:20:03 svc on ctl-b at +357s
+### Join stall after corosync kill (pacemaker-2.1.9-1.el9.x86_64)
+
+- verdict: **REPRODUCED**
+- DC: ctl-b; join-finalization-timeout 5min; fence delay 40s; RestartSec 1s; partition 8s after the restart; 5 config changes before the kill
+- fence done at +60s, svc started on ctl-b at +357s after the kill
+- DC seen in S_FINALIZE_JOIN: yes
+- CIB before the kill: b ` epoch="15"  num_updates="0"  admin_epoch="0" `, a ` epoch="15"  num_updates="0"  admin_epoch="0" `
+
+Join decisions on the DC (debug log):
+
+```
+Oct 29 14:14:13.067 localhost pacemaker-controld  [16062] (do_dc_join_offer_one) 	info: Making join-1 offers to any unconfirmed nodes because an unknown node joined
+Oct 29 14:14:13.067 localhost pacemaker-controld  [16062] (join_make_offer) 	info: Making join-1 offers based on membership event 13
+Oct 29 14:14:13.067 localhost pacemaker-controld  [16062] (do_dc_join_finalize) 	debug: Finalization not needed for join-1 at the current time
+Oct 29 14:14:13.067 localhost pacemaker-controld  [16062] (check_join_state) 	debug: join-1: Complete | state=S_FINALIZE_JOIN for=do_dc_join_finalize
+Oct 29 14:14:18.334 localhost pacemaker-controld  [16062] (do_dc_join_offer_one) 	info: Making join-1 offers to any unconfirmed nodes because an unknown node joined
+Oct 29 14:14:18.334 localhost pacemaker-controld  [16062] (join_make_offer) 	info: Making join-1 offers based on membership event 18
+Oct 29 14:14:18.334 localhost pacemaker-controld  [16062] (join_make_offer) 	info: Sending join-1 offer to ctl-a
+Oct 29 14:14:18.536 localhost pacemaker-controld  [16062] (do_dc_join_filter_offer) 	debug: Accepting join-1 request from ctl-a (with better CIB generation than current best from ctl-b) | ref=join_request-crmd-1793283258
+Oct 29 14:14:18.536 localhost pacemaker-controld  [16062] (do_dc_join_finalize) 	warning: Delaying join-1 finalization while transition in progress
+Oct 29 14:14:23.358 localhost pacemaker-controld  [16062] (do_dc_join_finalize) 	warning: Delaying join-1 finalization while transition in progress
+Oct 29 14:14:59.735 localhost pacemaker-controld  [16062] (do_dc_join_offer_one) 	info: Making join-1 offers to any unconfirmed nodes because an unknown node joined
+Oct 29 14:14:59.735 localhost pacemaker-controld  [16062] (join_make_offer) 	info: Making join-1 offers based on membership event 22
+Oct 29 14:14:59.735 localhost pacemaker-controld  [16062] (do_dc_join_finalize) 	debug: Finalization not needed for join-1 at the current time
+Oct 29 14:14:59.736 localhost pacemaker-controld  [16062] (do_dc_join_finalize) 	debug: Finalization not needed for join-1 at the current time
+Oct 29 14:19:59.747 localhost pacemaker-controld  [16062] (join_make_offer) 	info: Sending join-2 offer to ctl-b
+Oct 29 14:19:59.748 localhost pacemaker-controld  [16062] (do_dc_join_filter_offer) 	debug: Accepting join-2 request from ctl-b (with first CIB generation) | ref=join_request-crmd-1793283599-50
+Oct 29 14:19:59.748 localhost pacemaker-controld  [16062] (do_dc_join_finalize) 	debug: Finalizing join-2 for 1 node (sync'ing from local CIB)
+Oct 29 14:19:59.749 localhost pacemaker-controld  [16062] (check_join_state) 	debug: join-2: Still waiting on 1 integrated node | state=S_FINALIZE_JOIN for=finalize_sync_callback
+Oct 29 14:19:59.755 localhost pacemaker-controld  [16062] (check_join_state) 	debug: join-2: Complete | state=S_FINALIZE_JOIN for=join_node_state_commit_callback
+```
