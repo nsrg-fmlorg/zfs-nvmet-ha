@@ -1,0 +1,96 @@
+name: pcmk-main
+
+# Upstream Pacemaker main, built on AlmaLinux 10 with and without the
+# join finalization fix (lab/build-pacemaker-main.sh): make check on each
+# tree, then lab/joinstall.sh on two AlmaLinux 10 VMs with each build.
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [pcmk-main-joinfix]
+    paths:
+      - 'lab/build-pacemaker-main.sh'
+      - 'lab/patches/upstream-main-pcmk-joinfix.patch'
+      - '.github/workflows/pcmk-main.yml'
+
+concurrency:
+  group: pcmk-main-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  # ClusterLabs/pacemaker main when this was started.
+  PCMK_SHA: ea8d95358bca7d2872e83f6c18864365c72659e1
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    strategy:
+      fail-fast: false
+      matrix:
+        variant: [unpatched, patched]
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build main and run make check
+        run: sh lab/build-pacemaker-main.sh "$PCMK_SHA" ${{ matrix.variant }}
+      - name: make check summary
+        if: always()
+        run: |
+          { echo "## make check, main ${PCMK_SHA} ${{ matrix.variant }}"; echo '```'; tail -n 30 work/pcmk-rpms/make-check.log; echo '```'; } >> "$GITHUB_STEP_SUMMARY" 2>/dev/null || true
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: pcmk-main-${{ matrix.variant }}
+          path: work/pcmk-rpms
+
+  joinstall:
+    needs: build
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        variant: [unpatched, patched]
+        run: [1, 2, 3]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install qemu
+        run: |
+          sudo apt-get update -q
+          sudo apt-get install -yq --no-install-recommends \
+              qemu-system-x86 qemu-utils cloud-image-utils
+          sudo chmod 666 /dev/kvm
+
+      - name: Cache the cloud image
+        uses: actions/cache@v4
+        with:
+          path: work/base.img
+          key: alma10-cloudimg-${{ github.run_id }}
+          restore-keys: alma10-cloudimg-
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: pcmk-main-${{ matrix.variant }}
+          path: work/pcmk-rpms
+
+      - name: Boot VMs
+        run: DISTRO=alma10 sh lab/vms.sh up
+
+      - name: Scenario
+        timeout-minutes: 35
+        run: |
+          set -o pipefail
+          mkdir -p work/out
+          PCMK_VERSION=patched sh lab/joinstall.sh 2>&1 | tee work/out/scenario.txt
+
+      - name: Summary
+        if: always()
+        run: |
+          { echo "## main ${{ matrix.variant }} / run ${{ matrix.run }}"; cat work/out/summary.md; } >> "$GITHUB_STEP_SUMMARY" 2>/dev/null || true
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: joinstall-main-${{ matrix.variant }}-${{ matrix.run }}-logs
+          path: work/out
