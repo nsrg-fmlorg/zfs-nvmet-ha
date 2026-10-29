@@ -85,6 +85,10 @@ jobs:
           sudo apt-get install -yq --no-install-recommends \
               qemu-system-x86 qemu-utils cloud-image-utils
           sudo chmod 666 /dev/kvm
+          # What the runner itself runs on, for the record.
+          systemd-detect-virt || :
+          lscpu | grep -iE 'hypervisor|virtuali|model name' || :
+          sudo dmidecode -s system-manufacturer -s system-product-name 2>/dev/null || :
 
       - name: Cache the cloud image
         uses: actions/cache@v4

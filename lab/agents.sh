@@ -87,7 +87,10 @@ fi
 F=/sys/class/fcloop/ctl
 echo "wwnn=$TWN,wwpn=$TWP" > \$F/add_target_port
 echo "wwnn=$HWN,wwpn=$HWP" > \$F/add_local_port
-echo "wwnn=$TWN,wwpn=$TWP,lpwwnn=$HWN,lpwwpn=$HWP" > \$F/add_remote_port
+# The host refuses a remote port that is neither target nor discovery
+# (nvme_fc_init_ctrl: -EBADR); fcloop leaves roles 0 unless told, and
+# reads them as decimal: FC_PORT_ROLE_NVME_TARGET 0x20 | _DISCOVERY 0x40.
+echo "wwnn=$TWN,wwpn=$TWP,lpwwnn=$HWN,lpwwpn=$HWP,roles=96" > \$F/add_remote_port
 EOF
 	;;
 esac
