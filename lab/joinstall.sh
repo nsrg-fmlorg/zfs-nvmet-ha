@@ -49,6 +49,10 @@ RESTART_SEC=${RESTART_SEC:-1}
 # when the offer arrives, announces first, and the DC offers itself
 # again, which puts max_generation_from back on the DC.  0 turns it off.
 PARTITION_SEC=${PARTITION_SEC:-8}
+# TOKEN: corosync's totem token in ms, empty for its default (3000 with
+# two nodes).  A token shorter than RestartSec lets the DC see the node
+# leave before it is back, without dropping any traffic.
+TOKEN=${TOKEN:-}
 mkdir -p "$OUT"
 
 port() { case $1 in ctl-a) echo 2221;; ctl-b) echo 2222;; host) echo 2223;; esac; }
@@ -104,6 +108,7 @@ logging {
 	timestamp: on
 }
 EOF
+[ -z "$TOKEN" ] || sed -i "s/^\tcrypto_hash: none$/&\n\ttoken: $TOKEN/" "$OUT/corosync.conf"
 # The override from the field, but for RestartSec (see RESTART_SEC).
 cat > "$OUT/corosync-override.conf" <<EOF
 [Unit]
@@ -282,7 +287,7 @@ fi
 	echo "### Join stall after corosync kill ($PCMK_RPM)"
 	echo
 	echo "- verdict: **$verdict**"
-	echo "- DC: $DC; join-finalization-timeout $JFT; fence delay ${FENCE_DELAY}s; RestartSec ${RESTART_SEC}s; partition ${PARTITION_SEC}s after the restart; $BUMPS config changes before the kill"
+	echo "- DC: $DC; join-finalization-timeout $JFT; fence delay ${FENCE_DELAY}s; RestartSec ${RESTART_SEC}s; token ${TOKEN:-default}; partition ${PARTITION_SEC}s after the restart; $BUMPS config changes before the kill"
 	echo "- fence done at +${t_fenced:-?}s, svc started on ctl-b at +${t_up:-never}s after the kill"
 	echo "- DC seen in S_FINALIZE_JOIN: ${saw_finalize:-no}"
 	echo "- CIB before the kill: b \`$( grep -o ' \(admin_epoch\|epoch\|num_updates\)="[0-9]*"' "$OUT/cib-version-b.txt" | tr '\n' ' ')\`, a \`$( grep -o ' \(admin_epoch\|epoch\|num_updates\)="[0-9]*"' "$OUT/cib-version-a.txt" | tr '\n' ' ')\`"
