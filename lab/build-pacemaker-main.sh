@@ -1,5 +1,6 @@
 #!/bin/sh
-# Build upstream Pacemaker at a given commit into RPMs on AlmaLinux 10,
+# Build upstream Pacemaker at a given commit into RPMs on AlmaLinux 10
+# (or EL=9 for older trees),
 # with or without lab/patches/upstream-main-pcmk-joinfix.patch, and
 # run its test suite (make check) on the same tree.
 #
@@ -21,7 +22,7 @@ OUT=$(cd "$OUT" && pwd)
 
 docker run --rm -e SHA="$SHA" -e VARIANT="$VARIANT" \
     -v "$HERE/patches:/patches:ro" -v "$OUT:/out" \
-    docker.io/library/almalinux:10 sh -eux -c '
+    "docker.io/library/almalinux:${EL:-10}" sh -eux -c '
 r() { for i in 1 2 3 4 5; do "$@" && return; sleep 20; done; return 1; }
 r dnf -y -q install rpm-build dnf-plugins-core git createrepo_c epel-release
 dnf config-manager --set-enabled crb highavailability

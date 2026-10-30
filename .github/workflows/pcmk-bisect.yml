@@ -1,0 +1,87 @@
+name: pcmk-bisect
+
+# Pacemaker just before and just after ClusterLabs/pacemaker#3056, which
+# made the DC delay join finalization while a transition is in progress,
+# built without the join fix on AlmaLinux 9 and run through
+# lab/joinstall.sh on AlmaLinux 9 VMs: whether the stall needs that delay.
+
+on:
+  workflow_dispatch:
+
+concurrency:
+  group: pcmk-bisect-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - tree: pre3056
+            sha: 46abbf54ab4ed52a209f48f3ffdc96dc20f5cc55
+          - tree: post3056
+            sha: 0d91d682aa77ac1086b21fcf9d81413792115395
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build and run make check
+        run: EL=9 sh lab/build-pacemaker-main.sh ${{ matrix.sha }} ${{ matrix.tree }}
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: pcmk-${{ matrix.tree }}
+          path: work/pcmk-rpms
+
+  joinstall:
+    needs: build
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        tree: [pre3056, post3056]
+        run: [1, 2, 3]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install qemu
+        run: |
+          sudo apt-get update -q
+          sudo apt-get install -yq --no-install-recommends \
+              qemu-system-x86 qemu-utils cloud-image-utils
+          sudo chmod 666 /dev/kvm
+
+      - name: Cache the cloud image
+        uses: actions/cache@v4
+        with:
+          path: work/base.img
+          key: alma9-cloudimg-${{ github.run_id }}
+          restore-keys: alma9-cloudimg-
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: pcmk-${{ matrix.tree }}
+          path: work/pcmk-rpms
+
+      - name: Boot VMs
+        run: DISTRO=alma sh lab/vms.sh up
+
+      - name: Scenario
+        timeout-minutes: 35
+        run: |
+          set -o pipefail
+          mkdir -p work/out
+          PCMK_VERSION=patched sh lab/joinstall.sh 2>&1 | tee work/out/scenario.txt
+
+      - name: Summary
+        if: always()
+        run: |
+          { echo "## ${{ matrix.tree }} / run ${{ matrix.run }}"; cat work/out/summary.md; } >> "$GITHUB_STEP_SUMMARY" 2>/dev/null || true
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: joinstall-${{ matrix.tree }}-${{ matrix.run }}-logs
+          path: work/out
