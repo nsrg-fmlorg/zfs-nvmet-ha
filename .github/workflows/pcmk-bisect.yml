@@ -77,7 +77,11 @@ jobs:
         run: |
           set -o pipefail
           mkdir -p work/out
-          PCMK_VERSION=patched sh lab/joinstall.sh 2>&1 | tee work/out/scenario.txt
+          # No traffic dropped: knet keeps the restarted node's link down for
+          # about 5 s, so that its pacemaker starts before the DC sees it.
+          KNET_PONG_COUNT=5 KNET_PING_INTERVAL=1000 KNET_PING_TIMEOUT=2000 \
+          RESTART_SEC=2 PARTITION_SEC=0 \
+              PCMK_VERSION=patched sh lab/joinstall.sh 2>&1 | tee work/out/scenario.txt
 
       - name: Summary
         if: always()
