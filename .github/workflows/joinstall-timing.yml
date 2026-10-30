@@ -22,6 +22,9 @@ on:
       restart_secs:
         description: RestartSec values, as a JSON list
         default: '[1]'
+      pcmk:
+        description: latest (the distribution's) or patched (pacemaker-joinfix-rpms el9)
+        default: latest
   push:
     branches: [main]
     paths:
@@ -57,6 +60,15 @@ jobs:
           key: alma9-cloudimg-${{ github.run_id }}
           restore-keys: alma9-cloudimg-
 
+      - name: Fetch the patched packages
+        if: inputs.pcmk == 'patched'
+        run: |
+          git clone -q --depth 1 -b pacemaker-joinfix-rpms \
+              "https://github.com/${{ github.repository }}.git" work/rpms-branch
+          mkdir -p work/pcmk-rpms
+          cp work/rpms-branch/el9/*.rpm work/pcmk-rpms/
+          ls work/pcmk-rpms
+
       - name: Boot VMs
         run: DISTRO=alma sh lab/vms.sh up
 
@@ -68,7 +80,7 @@ jobs:
           TOKEN=${{ inputs.token }} KNET_PONG_COUNT=${{ inputs.pong || '5' }} \
           KNET_PING_INTERVAL=${{ inputs.ping || '1000' }} KNET_PING_TIMEOUT=${{ inputs.ping_timeout || '2000' }} \
           RESTART_SEC=${{ matrix.restart_sec }} PARTITION_SEC=0 \
-              PCMK_VERSION=latest sh lab/joinstall.sh 2>&1 | tee work/out/scenario.txt
+              PCMK_VERSION=${{ inputs.pcmk || 'latest' }} sh lab/joinstall.sh 2>&1 | tee work/out/scenario.txt
 
       - name: Summary
         if: always()
