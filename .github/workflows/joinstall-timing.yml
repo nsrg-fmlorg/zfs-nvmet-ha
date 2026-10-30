@@ -1,15 +1,27 @@
 name: joinstall-timing
 
-# The join stall with no traffic dropped: corosync's token shortened so
-# that the DC sees the killed node leave before systemd has it back, with
-# a few restart delays.  The distribution's pacemaker, without the fix.
+# The join stall with no traffic dropped, by corosync settings alone: a
+# shorter token, or knet settings that keep a restarted node's link down
+# for longer.  The distribution's pacemaker, without the fix.
 
 on:
   workflow_dispatch:
     inputs:
       token:
-        description: corosync totem token in ms
+        description: corosync totem token in ms (empty for the default)
+        default: ''
+      pong:
+        description: knet_pong_count
+        default: '5'
+      ping:
+        description: knet_ping_interval in ms
         default: '1000'
+      ping_timeout:
+        description: knet_ping_timeout in ms
+        default: '2000'
+      restart_secs:
+        description: RestartSec values, as a JSON list
+        default: '[1]'
   push:
     branches: [main]
     paths:
@@ -26,8 +38,8 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        restart_sec: [1, 3, 5]
-        run: [1, 2]
+        restart_sec: ${{ fromJSON(inputs.restart_secs || '[1]') }}
+        run: [1, 2, 3]
     steps:
       - uses: actions/checkout@v4
 
@@ -53,13 +65,15 @@ jobs:
         run: |
           set -o pipefail
           mkdir -p work/out
-          TOKEN=${{ inputs.token || '1000' }} RESTART_SEC=${{ matrix.restart_sec }} PARTITION_SEC=0 \
+          TOKEN=${{ inputs.token }} KNET_PONG_COUNT=${{ inputs.pong || '5' }} \
+          KNET_PING_INTERVAL=${{ inputs.ping || '1000' }} KNET_PING_TIMEOUT=${{ inputs.ping_timeout || '2000' }} \
+          RESTART_SEC=${{ matrix.restart_sec }} PARTITION_SEC=0 \
               PCMK_VERSION=latest sh lab/joinstall.sh 2>&1 | tee work/out/scenario.txt
 
       - name: Summary
         if: always()
         run: |
-          { echo "## token ${{ inputs.token || '1000' }}, RestartSec ${{ matrix.restart_sec }} / run ${{ matrix.run }}"; cat work/out/summary.md; } >> "$GITHUB_STEP_SUMMARY" 2>/dev/null || true
+          { echo "## token ${{ inputs.token || 'default' }}, knet pong ${{ inputs.pong || '5' }} ping ${{ inputs.ping || '1000' }}, RestartSec ${{ matrix.restart_sec }} / run ${{ matrix.run }}"; cat work/out/summary.md; } >> "$GITHUB_STEP_SUMMARY" 2>/dev/null || true
 
       - uses: actions/upload-artifact@v4
         if: always()

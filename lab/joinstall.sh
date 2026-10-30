@@ -53,6 +53,14 @@ PARTITION_SEC=${PARTITION_SEC:-8}
 # two nodes).  A token shorter than RestartSec lets the DC see the node
 # leave before it is back, without dropping any traffic.
 TOKEN=${TOKEN:-}
+# KNET_PONG_COUNT, KNET_PING_INTERVAL, KNET_PING_TIMEOUT: link 0's knet
+# settings (corosync.conf(5): pings needed to mark a link up, and the
+# ping interval and timeout in ms, a pair).  More pongs at a longer
+# interval keep the restarted node's link down for longer, so that its
+# pacemaker can start before the DC sees it, with no traffic dropped.
+KNET_PONG_COUNT=${KNET_PONG_COUNT:-}
+KNET_PING_INTERVAL=${KNET_PING_INTERVAL:-}
+KNET_PING_TIMEOUT=${KNET_PING_TIMEOUT:-}
 mkdir -p "$OUT"
 
 port() { case $1 in ctl-a) echo 2221;; ctl-b) echo 2222;; host) echo 2223;; esac; }
@@ -109,6 +117,12 @@ logging {
 }
 EOF
 [ -z "$TOKEN" ] || sed -i "s/^\tcrypto_hash: none$/&\n\ttoken: $TOKEN/" "$OUT/corosync.conf"
+if [ -n "$KNET_PONG_COUNT$KNET_PING_INTERVAL" ]; then
+	k="\tinterface {\n\t\tlinknumber: 0"
+	[ -z "$KNET_PONG_COUNT" ] || k="$k\n\t\tknet_pong_count: $KNET_PONG_COUNT"
+	[ -z "$KNET_PING_INTERVAL" ] || k="$k\n\t\tknet_ping_interval: $KNET_PING_INTERVAL\n\t\tknet_ping_timeout: $KNET_PING_TIMEOUT"
+	sed -i "s/^\tcrypto_hash: none$/&\n$k\n\t}/" "$OUT/corosync.conf"
+fi
 # The override from the field, but for RestartSec (see RESTART_SEC).
 cat > "$OUT/corosync-override.conf" <<EOF
 [Unit]
@@ -287,7 +301,7 @@ fi
 	echo "### Join stall after corosync kill ($PCMK_RPM)"
 	echo
 	echo "- verdict: **$verdict**"
-	echo "- DC: $DC; join-finalization-timeout $JFT; fence delay ${FENCE_DELAY}s; RestartSec ${RESTART_SEC}s; token ${TOKEN:-default}; partition ${PARTITION_SEC}s after the restart; $BUMPS config changes before the kill"
+	echo "- DC: $DC; join-finalization-timeout $JFT; fence delay ${FENCE_DELAY}s; RestartSec ${RESTART_SEC}s; token ${TOKEN:-default}; knet pong ${KNET_PONG_COUNT:-default} ping ${KNET_PING_INTERVAL:-default}/${KNET_PING_TIMEOUT:-default}; partition ${PARTITION_SEC}s after the restart; $BUMPS config changes before the kill"
 	echo "- fence done at +${t_fenced:-?}s, svc started on ctl-b at +${t_up:-never}s after the kill"
 	echo "- DC seen in S_FINALIZE_JOIN: ${saw_finalize:-no}"
 	echo "- CIB before the kill: b \`$( grep -o ' \(admin_epoch\|epoch\|num_updates\)="[0-9]*"' "$OUT/cib-version-b.txt" | tr '\n' ' ')\`, a \`$( grep -o ' \(admin_epoch\|epoch\|num_updates\)="[0-9]*"' "$OUT/cib-version-a.txt" | tr '\n' ' ')\`"
