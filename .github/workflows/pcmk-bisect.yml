@@ -7,6 +7,10 @@ name: pcmk-bisect
 
 on:
   workflow_dispatch:
+  push:
+    branches: [pcmk-main-joinfix]
+    paths:
+      - '.github/workflows/pcmk-bisect.yml'
 
 concurrency:
   group: pcmk-bisect-${{ github.ref }}
