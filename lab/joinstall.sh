@@ -61,6 +61,9 @@ TOKEN=${TOKEN:-}
 KNET_PONG_COUNT=${KNET_PONG_COUNT:-}
 KNET_PING_INTERVAL=${KNET_PING_INTERVAL:-}
 KNET_PING_TIMEOUT=${KNET_PING_TIMEOUT:-}
+# CRYPTO: encrypt and authenticate corosync traffic as the field does,
+# aes256 and sha256 with a shared authkey (corosync.conf(5)).
+CRYPTO=${CRYPTO:-}
 mkdir -p "$OUT"
 
 port() { case $1 in ctl-a) echo 2221;; ctl-b) echo 2222;; host) echo 2223;; esac; }
@@ -123,6 +126,12 @@ if [ -n "$KNET_PONG_COUNT$KNET_PING_INTERVAL" ]; then
 	[ -z "$KNET_PING_INTERVAL" ] || k="$k\n\t\tknet_ping_interval: $KNET_PING_INTERVAL\n\t\tknet_ping_timeout: $KNET_PING_TIMEOUT"
 	sed -i "s/^\tcrypto_hash: none$/&\n$k\n\t}/" "$OUT/corosync.conf"
 fi
+if [ -n "$CRYPTO" ]; then
+	sed -i 's/^\tcrypto_cipher: none$/\tcrypto_cipher: aes256/; s/^\tcrypto_hash: none$/\tcrypto_hash: sha256/' "$OUT/corosync.conf"
+fi
+# 256 bytes, corosync-keygen's default size; unused without CRYPTO.
+# Kept out of $OUT, which is published with the logs.
+head -c 256 /dev/urandom > "$LAB/authkey"
 # The override from the field, but for RestartSec (see RESTART_SEC).
 cat > "$OUT/corosync-override.conf" <<EOF
 [Unit]
@@ -139,6 +148,7 @@ EOF
 
 for v in ctl-a ctl-b; do
 	put "$v" "$OUT/corosync.conf" /tmp/corosync.conf
+	put "$v" "$LAB/authkey" /home/ubuntu/authkey
 	put "$v" "$OUT/corosync-override.conf" /tmp/override.conf
 	put "$v" "$HERE/fence_lab" /tmp/fence_lab
 	put "$v" "$LAB/id_ed25519" /tmp/lab_key
@@ -169,6 +179,7 @@ fi
 r dnf -y install nftables
 rpm -q pacemaker corosync nftables
 install -m 0644 /tmp/corosync.conf /etc/corosync/corosync.conf
+install -m 0400 /home/ubuntu/authkey /etc/corosync/authkey
 install -d /etc/systemd/system/corosync.service.d
 install -m 0644 /tmp/override.conf /etc/systemd/system/corosync.service.d/override.conf
 install -m 0755 /tmp/fence_lab /usr/sbin/fence_lab
@@ -301,7 +312,7 @@ fi
 	echo "### Join stall after corosync kill ($PCMK_RPM)"
 	echo
 	echo "- verdict: **$verdict**"
-	echo "- DC: $DC; join-finalization-timeout $JFT; fence delay ${FENCE_DELAY}s; RestartSec ${RESTART_SEC}s; token ${TOKEN:-default}; knet pong ${KNET_PONG_COUNT:-default} ping ${KNET_PING_INTERVAL:-default}/${KNET_PING_TIMEOUT:-default}; partition ${PARTITION_SEC}s after the restart; $BUMPS config changes before the kill"
+	echo "- DC: $DC; join-finalization-timeout $JFT; fence delay ${FENCE_DELAY}s; RestartSec ${RESTART_SEC}s; token ${TOKEN:-default}; crypto $([ -n "$CRYPTO" ] && echo aes256/sha256 || echo none); knet pong ${KNET_PONG_COUNT:-default} ping ${KNET_PING_INTERVAL:-default}/${KNET_PING_TIMEOUT:-default}; partition ${PARTITION_SEC}s after the restart; $BUMPS config changes before the kill"
 	echo "- fence done at +${t_fenced:-?}s, svc started on ctl-b at +${t_up:-never}s after the kill"
 	echo "- DC seen in S_FINALIZE_JOIN: ${saw_finalize:-no}"
 	echo "- CIB before the kill: b \`$( grep -o ' \(admin_epoch\|epoch\|num_updates\)="[0-9]*"' "$OUT/cib-version-b.txt" | tr '\n' ' ')\`, a \`$( grep -o ' \(admin_epoch\|epoch\|num_updates\)="[0-9]*"' "$OUT/cib-version-a.txt" | tr '\n' ' ')\`"

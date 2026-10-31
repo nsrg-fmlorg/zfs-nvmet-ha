@@ -11,14 +11,17 @@ on:
         description: corosync totem token in ms (empty for the default)
         default: ''
       pong:
-        description: knet_pong_count
+        description: knet_pong_count (empty for the default)
         default: '5'
       ping:
-        description: knet_ping_interval in ms
+        description: knet_ping_interval in ms (empty for the default)
         default: '1000'
       ping_timeout:
-        description: knet_ping_timeout in ms
+        description: knet_ping_timeout in ms (empty for the default)
         default: '2000'
+      crypto:
+        description: non-empty to encrypt corosync traffic as the field does
+        default: ''
       restart_secs:
         description: RestartSec values, as a JSON list
         default: '[1]'
@@ -77,8 +80,8 @@ jobs:
         run: |
           set -o pipefail
           mkdir -p work/out
-          TOKEN=${{ inputs.token }} KNET_PONG_COUNT=${{ inputs.pong || '5' }} \
-          KNET_PING_INTERVAL=${{ inputs.ping || '1000' }} KNET_PING_TIMEOUT=${{ inputs.ping_timeout || '2000' }} \
+          TOKEN=${{ inputs.token }} KNET_PONG_COUNT=${{ github.event_name == 'push' && '5' || inputs.pong }} \
+          KNET_PING_INTERVAL=${{ github.event_name == 'push' && '1000' || inputs.ping }} KNET_PING_TIMEOUT=${{ github.event_name == 'push' && '2000' || inputs.ping_timeout }} CRYPTO=${{ inputs.crypto }} \
           RESTART_SEC=${{ matrix.restart_sec }} PARTITION_SEC=0 \
               PCMK_VERSION=${{ inputs.pcmk || 'latest' }} sh lab/joinstall.sh 2>&1 | tee work/out/scenario.txt
 
