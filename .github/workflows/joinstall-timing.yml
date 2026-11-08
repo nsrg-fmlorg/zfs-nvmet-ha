@@ -11,13 +11,13 @@ on:
         description: corosync totem token in ms (empty for the default)
         default: ''
       pong:
-        description: knet_pong_count (empty for the default)
+        description: knet_pong_count ('default' for corosync's)
         default: '5'
       ping:
-        description: knet_ping_interval in ms (empty for the default)
+        description: knet_ping_interval in ms ('default' for corosync's)
         default: '1000'
       ping_timeout:
-        description: knet_ping_timeout in ms (empty for the default)
+        description: knet_ping_timeout in ms ('default' for corosync's)
         default: '2000'
       crypto:
         description: non-empty to encrypt corosync traffic as the field does
@@ -80,8 +80,14 @@ jobs:
         run: |
           set -o pipefail
           mkdir -p work/out
-          TOKEN=${{ inputs.token }} KNET_PONG_COUNT=${{ github.event_name == 'push' && '5' || inputs.pong }} \
-          KNET_PING_INTERVAL=${{ github.event_name == 'push' && '1000' || inputs.ping }} KNET_PING_TIMEOUT=${{ github.event_name == 'push' && '2000' || inputs.ping_timeout }} CRYPTO=${{ inputs.crypto }} \
+          # 'default' (or empty) leaves a knet setting to corosync's default;
+          # gh fills an input left empty with the workflow's default instead.
+          v() { case "$1" in default) ;; *) echo "$1";; esac; }
+          TOKEN=$(v '${{ inputs.token }}') \
+          KNET_PONG_COUNT=$(v '${{ github.event_name == 'push' && '5' || inputs.pong }}') \
+          KNET_PING_INTERVAL=$(v '${{ github.event_name == 'push' && '1000' || inputs.ping }}') \
+          KNET_PING_TIMEOUT=$(v '${{ github.event_name == 'push' && '2000' || inputs.ping_timeout }}') \
+          CRYPTO='${{ inputs.crypto }}' \
           RESTART_SEC=${{ matrix.restart_sec }} PARTITION_SEC=0 \
               PCMK_VERSION=${{ inputs.pcmk || 'latest' }} sh lab/joinstall.sh 2>&1 | tee work/out/scenario.txt
 
