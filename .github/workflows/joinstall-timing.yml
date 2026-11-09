@@ -28,13 +28,16 @@ on:
       pcmk:
         description: latest (the distribution's) or patched (pacemaker-joinfix-rpms el9)
         default: latest
+      bumps:
+        description: configuration changes on the DC before the kill
+        default: '5'
   push:
     branches: [main]
     paths:
       - '.github/workflows/joinstall-timing.yml'
 
 concurrency:
-  group: joinstall-timing-${{ github.ref }}
+  group: joinstall-timing-${{ github.ref }}-${{ inputs.pcmk }}-${{ inputs.bumps }}-${{ inputs.token }}-${{ inputs.restart_secs }}
   cancel-in-progress: true
 
 jobs:
@@ -88,7 +91,7 @@ jobs:
           KNET_PING_INTERVAL=$(v '${{ github.event_name == 'push' && '1000' || inputs.ping }}') \
           KNET_PING_TIMEOUT=$(v '${{ github.event_name == 'push' && '2000' || inputs.ping_timeout }}') \
           CRYPTO='${{ inputs.crypto }}' \
-          RESTART_SEC=${{ matrix.restart_sec }} PARTITION_SEC=0 \
+          BUMPS=${{ inputs.bumps || '5' }} RESTART_SEC=${{ matrix.restart_sec }} PARTITION_SEC=0 \
               PCMK_VERSION=${{ inputs.pcmk || 'latest' }} sh lab/joinstall.sh 2>&1 | tee work/out/scenario.txt
 
       - name: Summary
