@@ -64,6 +64,11 @@ KNET_PING_TIMEOUT=${KNET_PING_TIMEOUT:-}
 # CRYPTO: encrypt and authenticate corosync traffic as the field does,
 # aes256 and sha256 with a shared authkey (corosync.conf(5)).
 CRYPTO=${CRYPTO:-}
+# NODE_BUMPS: configuration changes made on the killed node's own CIB as
+# soon as its CIB manager answers after the restart, while it is still
+# alone, so that its CIB is really newer than the DC's when they merge
+# (the case raised in pacemaker#4201).  0 makes none.
+NODE_BUMPS=${NODE_BUMPS:-0}
 mkdir -p "$OUT"
 
 port() { case $1 in ctl-a) echo 2221;; ctl-b) echo 2222;; host) echo 2223;; esac; }
@@ -151,6 +156,7 @@ for v in ctl-a ctl-b; do
 	put "$v" "$LAB/authkey" /home/ubuntu/authkey
 	put "$v" "$OUT/corosync-override.conf" /tmp/override.conf
 	put "$v" "$HERE/fence_lab" /tmp/fence_lab
+	put "$v" "$HERE/node-bumps.sh" /home/ubuntu/node-bumps.sh
 	put "$v" "$LAB/id_ed25519" /tmp/lab_key
 	if [ "$PCMK_VERSION" = patched ]; then
 		on "$v" mkdir -p /tmp/pcmk-rpms
@@ -267,7 +273,12 @@ nft add rule inet lab in ip saddr 10.10.0.12 udp dport 5404-5406 drop
 nft add rule inet lab out ip daddr 10.10.0.12 udp dport 5404-5406 drop
 NFT
 fi
+based_pid=$(on ctl-a pidof pacemaker-based || :)
 on ctl-a sudo pkill -KILL -x corosync || :
+if [ "$NODE_BUMPS" -gt 0 ]; then
+	on ctl-a sudo sh /home/ubuntu/node-bumps.sh "$NODE_BUMPS" "$based_pid" \
+	    > "$OUT/node-bumps.txt" 2>&1 &
+fi
 if [ "$PARTITION_SEC" -gt 0 ]; then
 	( sleep $((RESTART_SEC + PARTITION_SEC)); on ctl-a sudo nft delete table inet lab
 	  on ctl-b sudo logger -t lab "=== partition healed ===" ) &
@@ -312,7 +323,7 @@ fi
 	echo "### Join stall after corosync kill ($PCMK_RPM)"
 	echo
 	echo "- verdict: **$verdict**"
-	echo "- DC: $DC; join-finalization-timeout $JFT; fence delay ${FENCE_DELAY}s; RestartSec ${RESTART_SEC}s; token ${TOKEN:-default}; crypto $([ -n "$CRYPTO" ] && echo aes256/sha256 || echo none); knet pong ${KNET_PONG_COUNT:-default} ping ${KNET_PING_INTERVAL:-default}/${KNET_PING_TIMEOUT:-default}; partition ${PARTITION_SEC}s after the restart; $BUMPS config changes before the kill"
+	echo "- DC: $DC; join-finalization-timeout $JFT; fence delay ${FENCE_DELAY}s; RestartSec ${RESTART_SEC}s; token ${TOKEN:-default}; crypto $([ -n "$CRYPTO" ] && echo aes256/sha256 || echo none); knet pong ${KNET_PONG_COUNT:-default} ping ${KNET_PING_INTERVAL:-default}/${KNET_PING_TIMEOUT:-default}; partition ${PARTITION_SEC}s after the restart; $BUMPS config changes before the kill; $NODE_BUMPS on the node after"
 	echo "- fence done at +${t_fenced:-?}s, svc started on ctl-b at +${t_up:-never}s after the kill"
 	echo "- DC seen in S_FINALIZE_JOIN: ${saw_finalize:-no}"
 	echo "- CIB before the kill: b \`$( grep -o ' \(admin_epoch\|epoch\|num_updates\)="[0-9]*"' "$OUT/cib-version-b.txt" | tr '\n' ' ')\`, a \`$( grep -o ' \(admin_epoch\|epoch\|num_updates\)="[0-9]*"' "$OUT/cib-version-a.txt" | tr '\n' ' ')\`"

@@ -31,13 +31,16 @@ on:
       bumps:
         description: configuration changes on the DC before the kill
         default: '5'
+      node_bumps:
+        description: configuration changes on the killed node's own CIB after its restart
+        default: '0'
   push:
     branches: [main]
     paths:
       - '.github/workflows/joinstall-timing.yml'
 
 concurrency:
-  group: joinstall-timing-${{ github.ref }}-${{ inputs.pcmk }}-${{ inputs.bumps }}-${{ inputs.token }}-${{ inputs.restart_secs }}
+  group: joinstall-timing-${{ github.ref }}-${{ inputs.pcmk }}-${{ inputs.bumps }}-${{ inputs.node_bumps }}-${{ inputs.token }}-${{ inputs.restart_secs }}
   cancel-in-progress: true
 
 jobs:
@@ -91,7 +94,7 @@ jobs:
           KNET_PING_INTERVAL=$(v '${{ github.event_name == 'push' && '1000' || inputs.ping }}') \
           KNET_PING_TIMEOUT=$(v '${{ github.event_name == 'push' && '2000' || inputs.ping_timeout }}') \
           CRYPTO='${{ inputs.crypto }}' \
-          BUMPS=${{ inputs.bumps || '5' }} RESTART_SEC=${{ matrix.restart_sec }} PARTITION_SEC=0 \
+          BUMPS=${{ inputs.bumps || '5' }} NODE_BUMPS=${{ inputs.node_bumps || '0' }} RESTART_SEC=${{ matrix.restart_sec }} PARTITION_SEC=0 \
               PCMK_VERSION=${{ inputs.pcmk || 'latest' }} sh lab/joinstall.sh 2>&1 | tee work/out/scenario.txt
 
       - name: Summary
