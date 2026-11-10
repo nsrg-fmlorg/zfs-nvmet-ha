@@ -4,7 +4,7 @@
 # with or without lab/patches/upstream-main-pcmk-joinfix.patch, and
 # run its test suite (make check) on the same tree.
 #
-#   usage: build-pacemaker-main.sh SHA unpatched|patched
+#   usage: build-pacemaker-main.sh SHA unpatched|patched|patched2
 #
 # The RPMs land in $OUT (work/pcmk-rpms) with repodata, and the make
 # check log in $OUT/make-check.log.  The release carries .main.unpatched
@@ -35,7 +35,12 @@ git config --global user.name lab; git config --global user.email lab@localhost
 git clone -q https://github.com/ClusterLabs/pacemaker.git /src
 cd /src
 git checkout -q "$SHA"
-if [ "$VARIANT" = patched ]; then git am -q /patches/upstream-main-pcmk-joinfix.patch; fi
+case $VARIANT in
+patched) git am -q /patches/upstream-main-pcmk-joinfix.patch;;
+# The second change, forgetting a lost node as the source of the newest CIB,
+# goes on top of the first.
+patched2) git am -q /patches/upstream-main-pcmk-joinfix.patch /patches/upstream-main-pcmk-forget.patch;;
+esac
 git log --oneline -2
 ./autogen.sh > /dev/null
 ./configure -q

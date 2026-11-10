@@ -1,0 +1,90 @@
+From 29c6b33e5abb0cc82b3c5866c788802e442577e8 Mon Sep 17 00:00:00 2001
+From: Showta Ishizaki <zakinko@snowrabbit.org>
+Date: Tue, 10 Nov 2026 14:28:05 +0900
+Subject: [PATCH] Fix: controller: Forget a lost node as the newest CIB's
+ source
+
+When a joining node's CIB is newer than the DC's, that node becomes
+max_generation_from and finalization syncs the CIB from it. If the node
+is then lost before finalization, as when it rejoined while being
+fenced, do_dc_join_finalize() still asks it for the CIB, and the request
+only fails when it times out, 30 seconds later. Only then does a new
+election start a join round that finalizes from the DC's own CIB.
+
+When a node leaves, forget it as max_generation_from, as is already done
+for the table of nodes whose CIB failed to sync. Finalization then uses
+the DC's CIB at once.
+
+Signed-off-by: Showta Ishizaki <zakinko@snowrabbit.org>
+---
+ daemons/controld/controld_callbacks.c  |  2 ++
+ daemons/controld/controld_join_dc.c    | 20 ++++++++++++++++++++
+ daemons/controld/controld_membership.h |  1 +
+ 3 files changed, 23 insertions(+)
+
+diff --git a/daemons/controld/controld_callbacks.c b/daemons/controld/controld_callbacks.c
+index ccbf54905..4fbcfccef 100644
+--- a/daemons/controld/controld_callbacks.c
++++ b/daemons/controld/controld_callbacks.c
+@@ -173,6 +173,7 @@ peer_update_callback(enum pcmk__node_update type, pcmk__node_status_t *node,
+                 }
+             } else {
+                 controld_remove_failed_sync_node(node->name);
++                controld_forget_max_generation_from(node->name);
+                 controld_remove_voter(node->name);
+             }
+ 
+@@ -212,6 +213,7 @@ peer_update_callback(enum pcmk__node_update type, pcmk__node_status_t *node,
+             if (!appeared) {
+                 node->peer_lost = time(NULL);
+                 controld_remove_failed_sync_node(node->name);
++                controld_forget_max_generation_from(node->name);
+                 controld_remove_voter(node->name);
+             }
+ 
+diff --git a/daemons/controld/controld_join_dc.c b/daemons/controld/controld_join_dc.c
+index 5f7ad8a56..900b8bfdf 100644
+--- a/daemons/controld/controld_join_dc.c
++++ b/daemons/controld/controld_join_dc.c
+@@ -101,6 +101,26 @@ controld_remove_failed_sync_node(const char *node_name)
+     }
+ }
+ 
++/*!
++ * \internal
++ * \brief Forget a node as the source of the newest CIB if it has left
++ *
++ * Otherwise finalization would still ask it for the CIB, and wait for the
++ * request to time out, after it has been fenced.
++ *
++ * \param[in] node_name  Name of node that left
++ */
++void
++controld_forget_max_generation_from(const char *node_name)
++{
++    if ((max_generation_from != NULL)
++        && pcmk__str_eq(node_name, max_generation_from, pcmk__str_casei)) {
++        pcmk__info("Forgetting %s as the source of the newest CIB because it "
++                   "left", node_name);
++        free_max_generation();
++    }
++}
++
+ /*!
+  * \internal
+  * \brief Add to a hash table a node whose CIB failed to sync
+diff --git a/daemons/controld/controld_membership.h b/daemons/controld/controld_membership.h
+index dfa57d8f5..178a141ab 100644
+--- a/daemons/controld/controld_membership.h
++++ b/daemons/controld/controld_membership.h
+@@ -58,6 +58,7 @@ extern gboolean check_join_state(enum crmd_fsa_state cur_state, const char *sour
+ 
+ void controld_destroy_failed_sync_table(void);
+ void controld_remove_failed_sync_node(const char *node_name);
++void controld_forget_max_generation_from(const char *node_name);
+ 
+ #ifdef __cplusplus
+ }
+-- 
+2.54.0 (Apple Git-157)
+
