@@ -97,3 +97,5 @@ jobs:
         with:
           name: joinstall-fg-${{ matrix.variant }}-${{ matrix.run }}-logs
           path: work/out
+
+# Retried after a mirror served a broken repomd.xml (2026-11-10).

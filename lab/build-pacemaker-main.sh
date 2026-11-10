@@ -23,7 +23,7 @@ OUT=$(cd "$OUT" && pwd)
 docker run --rm -e SHA="$SHA" -e VARIANT="$VARIANT" \
     -v "$HERE/patches:/patches:ro" -v "$OUT:/out" \
     "docker.io/library/almalinux:${EL:-10}" sh -eux -c '
-r() { for i in 1 2 3 4 5; do "$@" && return; sleep 20; done; return 1; }
+r() { for i in 1 2 3 4 5; do "$@" && return; dnf clean metadata -q || :; sleep 20; done; return 1; }
 r dnf -y -q install rpm-build dnf-plugins-core git createrepo_c epel-release
 dnf config-manager --set-enabled crb highavailability
 # The distribution pacemaker build dependencies get configure going; the
