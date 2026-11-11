@@ -99,3 +99,4 @@ jobs:
           path: work/out
 
 # Retried after a mirror served a broken repomd.xml (2026-11-10).
+# Rerun on main with NODE_BUMPS in joinstall.sh (2026-11-11).
